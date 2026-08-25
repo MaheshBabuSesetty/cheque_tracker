@@ -79,7 +79,8 @@ class _VendorPickerSheetState extends ConsumerState<VendorPickerSheet> {
                         ? vendors
                         : vendors
                             .where((v) =>
-                                v.name.toLowerCase().contains(query) || v.code.toLowerCase().contains(query))
+                                v.name.toLowerCase().contains(query) ||
+                                (v.code?.toLowerCase().contains(query) ?? false))
                             .toList();
 
                     if (results.isEmpty) {
@@ -96,13 +97,19 @@ class _VendorPickerSheetState extends ConsumerState<VendorPickerSheet> {
                       separatorBuilder: (_, _) => Divider(height: 1, color: Colors.black.withValues(alpha: 0.05)),
                       itemBuilder: (context, index) {
                         final vendor = results[index];
+                        final subtitleParts = [
+                          if (vendor.code != null) vendor.code!,
+                          if (vendor.trn != null) 'TRN ${vendor.trn}',
+                        ];
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(vendor.name, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                          subtitle: Text(
-                            '${vendor.code} · TRN ${vendor.trn}',
-                            style: const TextStyle(fontSize: 10, color: AppColors.textFaint, letterSpacing: 0.02),
-                          ),
+                          subtitle: subtitleParts.isEmpty
+                              ? null
+                              : Text(
+                                  subtitleParts.join(' · '),
+                                  style: const TextStyle(fontSize: 10, color: AppColors.textFaint, letterSpacing: 0.02),
+                                ),
                           onTap: () => Navigator.of(context).pop(vendor),
                         );
                       },

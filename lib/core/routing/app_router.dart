@@ -49,7 +49,7 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
 
     case RouteNames.collectionDetail:
       return AppPageRoute(
-        page: CollectionDetailScreen(recordId: settings.arguments! as String),
+        page: CollectionDetailScreen(chequeId: settings.arguments! as String),
         transitionType: TransitionType.slide,
         settings: settings,
       );

@@ -7,7 +7,7 @@ import '../entities/user.dart';
 /// (Dependency Inversion), and a fake implementation can be substituted
 /// wholesale in tests (Liskov Substitution) via `mocktail`.
 abstract class AuthRepository {
-  Future<DataResult<User>> login({required String agentId, required String password});
+  Future<DataResult<User>> login({required String username, required String password});
   Future<DataResult<void>> logout();
   Future<DataResult<User?>> getCurrentUser();
 }

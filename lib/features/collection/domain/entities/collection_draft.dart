@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import '../../../cheques/domain/entities/cheque.dart';
 import 'cheque_scan.dart';
 import 'emirates_id_scan.dart';
 import 'vendor.dart';
@@ -22,9 +23,7 @@ class CollectionDraft extends Equatable {
     this.frontIdScan,
     this.backIdScan,
     this.isScanningId = false,
-    this.chequeNumber = '',
-    this.chequeAmount = '',
-    this.chequeCurrency = 'AED',
+    this.cheque,
     this.chequeCopyPath,
     this.chequeOcrStatus = ChequeOcrStatus.idle,
     this.chequeScan,
@@ -55,13 +54,17 @@ class CollectionDraft extends Equatable {
   final EmiratesIdScan? backIdScan;
   final bool isScanningId;
 
-  final String chequeNumber;
-  final String chequeAmount;
-
-  /// Only 'AED' or 'USD'. Pre-selected by the agent before capture, then
-  /// overwritten by [chequeScan]'s detected currency once a scan succeeds.
-  final String chequeCurrency;
+  /// The real, currently-SIGNED cheque selected for this collection
+  /// (`GET /cheques?status=SIGNED&search=<vendor name>`). Its number,
+  /// amount and bank are server truth — they aren't retyped by the agent,
+  /// and aren't even sent in the submit request (only the cheque's id is —
+  /// the server already knows the rest).
+  final Cheque? cheque;
   final String? chequeCopyPath;
+
+  /// The on-device OCR read of [chequeCopyPath] is a non-blocking sanity
+  /// check only (does the photographed cheque look like [cheque]?) — it
+  /// never gates [stepsDone], unlike the old free-typed-entry flow.
   final ChequeOcrStatus chequeOcrStatus;
   final ChequeScan? chequeScan;
 
@@ -77,7 +80,7 @@ class CollectionDraft extends Equatable {
   /// completion is judged directly on this being non-null.
   final String? signaturePath;
 
-  static const stepNames = ['vendor', 'representative details', 'Emirates ID', 'cheque copy', 'consent', 'signature'];
+  static const stepNames = ['vendor', 'representative details', 'Emirates ID', 'a signed cheque', 'consent', 'signature'];
 
   bool get isMobileValid => RegExp(r'^\d{9}$').hasMatch(repMobile.replaceAll(RegExp(r'\D'), ''));
 
@@ -104,18 +107,26 @@ class CollectionDraft extends Equatable {
     );
   }
 
+  /// The on-device cheque-photo scan found a different cheque number than
+  /// the one actually selected — surfaced as a non-blocking warning, since
+  /// [cheque] (not the scan) is what gets submitted.
+  bool get chequeNumberMismatch {
+    final scanned = chequeScan?.chequeNumber;
+    return cheque != null && scanned != null && scanned.isNotEmpty && scanned != cheque!.chequeNumber;
+  }
+
+  double get amountValue => cheque?.amount ?? 0;
+
   /// One flag per numbered step on the collect screen, in display order.
-  /// Step 4 additionally requires the cheque scan to have settled (not
-  /// mid-scan, and not rejected for an unaccepted currency).
+  /// Step 4 ("Cheque") requires both picking a real SIGNED cheque and
+  /// capturing its photo — the on-device OCR read is a non-blocking sanity
+  /// check only (see [chequeNumberMismatch]), unlike the old free-typed-
+  /// entry flow where a rejected scan blocked this step.
   List<bool> get stepsDone => [
         vendor != null,
         repName.trim().isNotEmpty && isMobileValid && repPhotoPath != null,
         idFrontPath != null && idBackPath != null && idScan != null,
-        chequeCopyPath != null &&
-            chequeNumber.trim().isNotEmpty &&
-            amountValue > 0 &&
-            chequeOcrStatus != ChequeOcrStatus.scanning &&
-            chequeOcrStatus != ChequeOcrStatus.rejected,
+        cheque != null && chequeCopyPath != null && chequeOcrStatus != ChequeOcrStatus.scanning,
         consent,
         signaturePath != null,
       ];
@@ -126,11 +137,6 @@ class CollectionDraft extends Equatable {
   }
 
   bool get isComplete => missingStepNames.isEmpty;
-
-  double get amountValue {
-    final cleaned = chequeAmount.replaceAll(RegExp(r'[^0-9.]'), '');
-    return double.tryParse(cleaned) ?? 0;
-  }
 
   CollectionDraft copyWith({
     Vendor? Function()? vendor,
@@ -143,9 +149,7 @@ class CollectionDraft extends Equatable {
     EmiratesIdScan? Function()? frontIdScan,
     EmiratesIdScan? Function()? backIdScan,
     bool? isScanningId,
-    String? chequeNumber,
-    String? chequeAmount,
-    String? chequeCurrency,
+    Cheque? Function()? cheque,
     String? Function()? chequeCopyPath,
     ChequeOcrStatus? chequeOcrStatus,
     ChequeScan? Function()? chequeScan,
@@ -165,9 +169,7 @@ class CollectionDraft extends Equatable {
       frontIdScan: frontIdScan != null ? frontIdScan() : this.frontIdScan,
       backIdScan: backIdScan != null ? backIdScan() : this.backIdScan,
       isScanningId: isScanningId ?? this.isScanningId,
-      chequeNumber: chequeNumber ?? this.chequeNumber,
-      chequeAmount: chequeAmount ?? this.chequeAmount,
-      chequeCurrency: chequeCurrency ?? this.chequeCurrency,
+      cheque: cheque != null ? cheque() : this.cheque,
       chequeCopyPath: chequeCopyPath != null ? chequeCopyPath() : this.chequeCopyPath,
       chequeOcrStatus: chequeOcrStatus ?? this.chequeOcrStatus,
       chequeScan: chequeScan != null ? chequeScan() : this.chequeScan,
@@ -190,9 +192,7 @@ class CollectionDraft extends Equatable {
         frontIdScan,
         backIdScan,
         isScanningId,
-        chequeNumber,
-        chequeAmount,
-        chequeCurrency,
+        cheque,
         chequeCopyPath,
         chequeOcrStatus,
         chequeScan,

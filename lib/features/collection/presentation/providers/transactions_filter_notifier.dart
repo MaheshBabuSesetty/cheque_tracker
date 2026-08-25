@@ -1,12 +1,12 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../../domain/entities/collection_record.dart';
+import '../../domain/entities/collection_summary.dart';
 import 'collections_notifier.dart';
 
 part 'transactions_filter_notifier.g.dart';
 
-/// The transactions search box's current text — filtering is search-only
-/// (no status chips); the per-row `StatusBadge` still shows Synced/Pending.
+/// The transactions search box's current text — filtering is search-only,
+/// over whatever `GET /collections` returns.
 @riverpod
 class TransactionsSearchNotifier extends _$TransactionsSearchNotifier {
   @override
@@ -20,13 +20,12 @@ class TransactionsSearchNotifier extends _$TransactionsSearchNotifier {
 /// submission (which invalidates that provider) flows through
 /// automatically.
 @riverpod
-List<CollectionRecord> filteredCollections(Ref ref) {
+List<CollectionSummary> filteredCollections(Ref ref) {
   final query = ref.watch(transactionsSearchProvider).trim().toLowerCase();
-  final all = ref.watch(collectionsProvider).value ?? const <CollectionRecord>[];
+  final all = ref.watch(collectionsProvider).value ?? const <CollectionSummary>[];
   if (query.isEmpty) return all;
 
   return all
-      .where((record) =>
-          '${record.vendorName} ${record.repName} ${record.chequeNumber} ${record.ref}'.toLowerCase().contains(query))
+      .where((record) => '${record.vendorName} ${record.repName} ${record.chequeNumber}'.toLowerCase().contains(query))
       .toList();
 }

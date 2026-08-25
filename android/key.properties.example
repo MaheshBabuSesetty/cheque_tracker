@@ -1,0 +1,8 @@
+## Copy this file to android/key.properties (which is git-ignored) and fill
+## in real values before building a release APK/AAB. Never commit the real
+## file or the keystore it points to.
+storePassword=REPLACE_ME
+keyPassword=REPLACE_ME
+keyAlias=REPLACE_ME
+## Path relative to android/app/, or an absolute path.
+storeFile=/absolute/path/to/release.jks

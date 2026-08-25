@@ -1,21 +1,20 @@
+import '../../domain/entities/collection_draft.dart';
 import '../../domain/entities/collection_record.dart';
+import '../../domain/entities/collection_summary.dart';
 import '../../domain/repositories/collection_repository.dart';
-import '../datasources/collection_local_data_source.dart';
+import '../datasources/collection_remote_data_source.dart';
 
 class CollectionRepositoryImpl implements CollectionRepository {
-  const CollectionRepositoryImpl(this._localDataSource);
+  const CollectionRepositoryImpl(this._remoteDataSource);
 
-  final CollectionLocalDataSource _localDataSource;
-
-  @override
-  Future<List<CollectionRecord>> getAll() => _localDataSource.getAll();
+  final CollectionRemoteDataSource _remoteDataSource;
 
   @override
-  Future<CollectionRecord> submit(CollectionRecord record) async {
-    await _localDataSource.add(record);
-    return record;
-  }
+  Future<CollectionRecord> submit(CollectionDraft draft) => _remoteDataSource.submit(draft);
 
   @override
-  Future<CollectionRecord?> getById(String id) => _localDataSource.getById(id);
+  Future<List<CollectionSummary>> getAll() => _remoteDataSource.getAll();
+
+  @override
+  Future<CollectionRecord> getByChequeId(String chequeId) => _remoteDataSource.getByChequeId(chequeId);
 }

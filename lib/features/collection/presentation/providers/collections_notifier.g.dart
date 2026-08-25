@@ -8,21 +8,21 @@ part of 'collections_notifier.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// All submitted collections, newest first (the local datasource already
-/// orders them that way). [CollectDraftNotifier.submit] invalidates this
-/// provider so the transactions list picks up a new record immediately.
+/// All submitted collections (`GET /collections`), newest first.
+/// [CollectDraftNotifier.submit] invalidates this provider so the
+/// transactions list picks up a new record immediately.
 
 @ProviderFor(Collections)
 final collectionsProvider = CollectionsProvider._();
 
-/// All submitted collections, newest first (the local datasource already
-/// orders them that way). [CollectDraftNotifier.submit] invalidates this
-/// provider so the transactions list picks up a new record immediately.
+/// All submitted collections (`GET /collections`), newest first.
+/// [CollectDraftNotifier.submit] invalidates this provider so the
+/// transactions list picks up a new record immediately.
 final class CollectionsProvider
-    extends $AsyncNotifierProvider<Collections, List<CollectionRecord>> {
-  /// All submitted collections, newest first (the local datasource already
-  /// orders them that way). [CollectDraftNotifier.submit] invalidates this
-  /// provider so the transactions list picks up a new record immediately.
+    extends $AsyncNotifierProvider<Collections, List<CollectionSummary>> {
+  /// All submitted collections (`GET /collections`), newest first.
+  /// [CollectDraftNotifier.submit] invalidates this provider so the
+  /// transactions list picks up a new record immediately.
   CollectionsProvider._()
     : super(
         from: null,
@@ -42,28 +42,31 @@ final class CollectionsProvider
   Collections create() => Collections();
 }
 
-String _$collectionsHash() => r'59b0f29e059f8785e237df5296978f85d5517c6d';
+String _$collectionsHash() => r'45cb76fd9ef4a9b9cacd092b5114934630847f80';
 
-/// All submitted collections, newest first (the local datasource already
-/// orders them that way). [CollectDraftNotifier.submit] invalidates this
-/// provider so the transactions list picks up a new record immediately.
+/// All submitted collections (`GET /collections`), newest first.
+/// [CollectDraftNotifier.submit] invalidates this provider so the
+/// transactions list picks up a new record immediately.
 
-abstract class _$Collections extends $AsyncNotifier<List<CollectionRecord>> {
-  FutureOr<List<CollectionRecord>> build();
+abstract class _$Collections extends $AsyncNotifier<List<CollectionSummary>> {
+  FutureOr<List<CollectionSummary>> build();
   @$mustCallSuper
   @override
   void runBuild() {
     final ref =
         this.ref
-            as $Ref<AsyncValue<List<CollectionRecord>>, List<CollectionRecord>>;
+            as $Ref<
+              AsyncValue<List<CollectionSummary>>,
+              List<CollectionSummary>
+            >;
     final element =
         ref.element
             as $ClassProviderElement<
               AnyNotifier<
-                AsyncValue<List<CollectionRecord>>,
-                List<CollectionRecord>
+                AsyncValue<List<CollectionSummary>>,
+                List<CollectionSummary>
               >,
-              AsyncValue<List<CollectionRecord>>,
+              AsyncValue<List<CollectionSummary>>,
               Object?,
               Object?
             >;

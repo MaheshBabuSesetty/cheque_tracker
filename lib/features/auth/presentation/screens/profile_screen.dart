@@ -77,7 +77,7 @@ class _ProfileBody extends ConsumerWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text('Sign out?'),
         content: const Text(
-          'You will need your agent ID and password to sign back in.',
+          'You will need your username and password to sign back in.',
           style: TextStyle(fontSize: 13, color: AppColors.textMuted),
         ),
         actions: [
@@ -140,9 +140,12 @@ class _ProfileBody extends ConsumerWidget {
           children: [
             const Text('ACCOUNT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 0.4)),
             const SizedBox(height: 12),
-            _ProfileRow(label: 'Agent ID', value: user.id),
             _ProfileRow(label: 'Email', value: user.email),
-            const _ProfileRow(label: 'Role', value: 'Field collection agent', isLast: true),
+            _ProfileRow(
+              label: 'Role',
+              value: user.roles.isEmpty ? '—' : user.roles.join(', '),
+              isLast: true,
+            ),
           ],
         ),
         const SizedBox(height: 20),

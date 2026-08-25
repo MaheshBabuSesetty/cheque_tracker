@@ -51,7 +51,7 @@ final class CollectDraftNotifierProvider
 }
 
 String _$collectDraftNotifierHash() =>
-    r'4c26509242b6553a2c22709d853f2878a393914f';
+    r'8714f42994c04d80067622b475eb0b19533d76ac';
 
 /// State for the in-progress "New collection" form. One notifier per
 /// active draft — [submit] resets it back to empty on success, ready for

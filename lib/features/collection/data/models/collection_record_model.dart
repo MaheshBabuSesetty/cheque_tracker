@@ -1,62 +1,60 @@
-import 'package:json_annotation/json_annotation.dart';
-
+import '../../domain/entities/collection_attachment.dart';
 import '../../domain/entities/collection_record.dart';
 
-part 'collection_record_model.g.dart';
-
-/// Data-layer representation of [CollectionRecord], with JSON
-/// (de)serialization for local persistence. `CollectionStatus` and
-/// `DateTime` round-trip via json_serializable's built-in enum-name and
-/// ISO-8601 handling — no custom converters needed.
-@JsonSerializable()
+/// Data-layer representation of [CollectionRecord]. Hand-written `fromJson`
+/// (no `json_serializable` codegen) matching the exact shape returned by
+/// both `POST /cheques/{chequeId}/collection` (201) and
+/// `GET /collections/{chequeId}` — same fields either way.
 class CollectionRecordModel extends CollectionRecord {
   const CollectionRecordModel({
     required super.id,
-    required super.ref,
-    required super.vendorName,
-    required super.repName,
-    required super.repMobile,
-    required super.emiratesId,
-    required super.nationality,
-    required super.expiry,
+    required super.chequeId,
     required super.chequeNumber,
+    required super.vendorName,
     required super.amount,
-    required super.currency,
-    required super.status,
+    required super.repName,
     required super.timestamp,
-    super.repPhotoPath,
-    super.idFrontPath,
-    super.idBackPath,
-    super.chequeCopyPath,
-    super.signaturePath,
-    super.voucherPath,
-    super.supportingDocPaths,
+    super.repMobile,
+    super.emiratesId,
+    super.nationality,
+    super.expiry,
+    super.collectorPhotoUrl,
+    super.idFrontUrl,
+    super.idBackUrl,
+    super.chequePhotoUrl,
+    super.signatureUrl,
+    super.voucherUrl,
+    super.supportingDocuments,
+    super.newChequeStatus,
   });
 
-  factory CollectionRecordModel.fromJson(Map<String, dynamic> json) => _$CollectionRecordModelFromJson(json);
-
-  Map<String, dynamic> toJson() => _$CollectionRecordModelToJson(this);
-
-  factory CollectionRecordModel.fromEntity(CollectionRecord record) => CollectionRecordModel(
-        id: record.id,
-        ref: record.ref,
-        vendorName: record.vendorName,
-        repName: record.repName,
-        repMobile: record.repMobile,
-        emiratesId: record.emiratesId,
-        nationality: record.nationality,
-        expiry: record.expiry,
-        chequeNumber: record.chequeNumber,
-        amount: record.amount,
-        currency: record.currency,
-        status: record.status,
-        timestamp: record.timestamp,
-        repPhotoPath: record.repPhotoPath,
-        idFrontPath: record.idFrontPath,
-        idBackPath: record.idBackPath,
-        chequeCopyPath: record.chequeCopyPath,
-        signaturePath: record.signaturePath,
-        voucherPath: record.voucherPath,
-        supportingDocPaths: record.supportingDocPaths,
-      );
+  factory CollectionRecordModel.fromJson(Map<String, dynamic> json) => CollectionRecordModel(
+    id: json['id'] as String,
+    chequeId: json['chequeId'] as String,
+    chequeNumber: json['chequeNumber'] as String,
+    vendorName: json['supplierName'] as String,
+    amount: (json['amount'] as num).toDouble(),
+    repName: json['collectorName'] as String,
+    repMobile: json['collectorMobile'] as String? ?? '',
+    emiratesId: json['collectorEmiratesId'] as String? ?? '',
+    nationality: json['collectorNationality'] as String? ?? '',
+    expiry: json['collectorEidExpiryDate'] as String? ?? '',
+    collectorPhotoUrl: json['collectorPhotoUrl'] as String?,
+    idFrontUrl: json['emiratesIdFrontUrl'] as String?,
+    idBackUrl: json['emiratesIdBackUrl'] as String?,
+    chequePhotoUrl: json['chequePhotoUrl'] as String?,
+    signatureUrl: json['signatureUrl'] as String?,
+    voucherUrl: json['acknowledgementVoucherUrl'] as String?,
+    supportingDocuments: (json['supportingDocuments'] as List<dynamic>? ?? [])
+        .map(
+          (doc) => CollectionAttachment(
+            id: (doc as Map<String, dynamic>)['id'] as String,
+            fileName: doc['fileName'] as String,
+            url: doc['url'] as String,
+          ),
+        )
+        .toList(),
+    timestamp: DateTime.parse(json['collectedAt'] as String),
+    newChequeStatus: json['newChequeStatus'] as String?,
+  );
 }

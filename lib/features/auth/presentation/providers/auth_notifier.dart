@@ -22,9 +22,9 @@ class AuthNotifier extends _$AuthNotifier {
     };
   }
 
-  Future<void> login({required String agentId, required String password}) async {
+  Future<void> login({required String username, required String password}) async {
     state = const AsyncLoading();
-    final result = await ref.read(loginUserProvider)(agentId: agentId, password: password);
+    final result = await ref.read(loginUserProvider)(username: username, password: password);
     state = switch (result) {
       ResultSuccess(:final data) => AsyncData(data),
       ResultError(:final failure) => AsyncError(failure, StackTrace.current),

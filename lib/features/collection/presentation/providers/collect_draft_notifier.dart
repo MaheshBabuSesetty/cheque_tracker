@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../../cheques/domain/entities/cheque.dart';
 import '../../../../core/di/dependency_injection.dart';
 import '../../domain/entities/collection_draft.dart';
 import '../../domain/entities/collection_record.dart';
@@ -19,9 +20,12 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
   @override
   CollectionDraft build() => const CollectionDraft();
 
-  void pickVendor(Vendor vendor) => state = state.copyWith(vendor: () => vendor);
+  /// Picking a different vendor invalidates whatever cheque/photo was
+  /// selected for the previous one — a cheque only ever belongs to one
+  /// vendor.
+  void pickVendor(Vendor vendor) => state = state.copyWith(vendor: () => vendor, cheque: () => null, chequeCopyPath: () => null, chequeOcrStatus: ChequeOcrStatus.idle, chequeScan: () => null);
 
-  void clearVendor() => state = state.copyWith(vendor: () => null);
+  void clearVendor() => state = state.copyWith(vendor: () => null, cheque: () => null, chequeCopyPath: () => null, chequeOcrStatus: ChequeOcrStatus.idle, chequeScan: () => null);
 
   void setRepName(String value) => state = state.copyWith(repName: value, nameFromOcr: false);
 
@@ -73,11 +77,22 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     if (name.isNotEmpty) state = state.copyWith(repName: name, nameFromOcr: true);
   }
 
-  void setChequeNumber(String value) => state = state.copyWith(chequeNumber: value);
+  /// Picks the real, currently-SIGNED cheque this collection is for.
+  /// Clears any previously-captured cheque photo/scan — it would have been
+  /// of a different cheque.
+  void pickCheque(Cheque cheque) => state = state.copyWith(
+        cheque: () => cheque,
+        chequeCopyPath: () => null,
+        chequeOcrStatus: ChequeOcrStatus.idle,
+        chequeScan: () => null,
+      );
 
-  void setChequeAmount(String value) => state = state.copyWith(chequeAmount: value);
-
-  void setChequeCurrency(String value) => state = state.copyWith(chequeCurrency: value);
+  void clearCheque() => state = state.copyWith(
+        cheque: () => null,
+        chequeCopyPath: () => null,
+        chequeOcrStatus: ChequeOcrStatus.idle,
+        chequeScan: () => null,
+      );
 
   Future<void> captureChequeCopy() async {
     final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'cheque-copy');
@@ -93,36 +108,22 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     await _runChequeScan(path);
   }
 
+  /// The scan is a non-blocking sanity check against the already-selected
+  /// [CollectionDraft.cheque] — it never overwrites/fabricates the cheque
+  /// number or amount, and a rejected/mismatched read never blocks
+  /// [CollectionDraft.stepsDone].
   Future<void> _runChequeScan(String path) async {
     final scan = await ref.read(scanChequeProvider)(path);
-    if (scan.accepted) {
-      state = state.copyWith(
-        chequeOcrStatus: ChequeOcrStatus.done,
-        chequeScan: () => scan,
-        chequeCurrency: scan.detectedCurrency,
-        chequeNumber: scan.chequeNumber!,
-        chequeAmount: scan.amount!.toStringAsFixed(0),
-      );
-    } else {
-      state = state.copyWith(
-        chequeOcrStatus: ChequeOcrStatus.rejected,
-        chequeScan: () => scan,
-        chequeNumber: '',
-        chequeAmount: '',
-      );
-    }
+    state = state.copyWith(
+      chequeOcrStatus: scan.accepted ? ChequeOcrStatus.done : ChequeOcrStatus.rejected,
+      chequeScan: () => scan,
+    );
   }
 
-  /// Discards the rejected cheque capture so the agent can try a different
-  /// cheque — the tile reverts to its empty state.
+  /// Discards the captured cheque photo so the agent can retake it — the
+  /// tile reverts to its empty state, but the selected cheque stays.
   void recaptureCheque() {
-    state = state.copyWith(
-      chequeCopyPath: () => null,
-      chequeOcrStatus: ChequeOcrStatus.idle,
-      chequeScan: () => null,
-      chequeNumber: '',
-      chequeAmount: '',
-    );
+    state = state.copyWith(chequeCopyPath: () => null, chequeOcrStatus: ChequeOcrStatus.idle, chequeScan: () => null);
   }
 
   Future<void> captureVoucher() async {

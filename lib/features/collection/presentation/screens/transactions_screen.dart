@@ -4,10 +4,9 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/routing/route_names.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../domain/entities/collection_record.dart';
+import '../../domain/entities/collection_summary.dart';
 import '../providers/collections_notifier.dart';
 import '../providers/transactions_filter_notifier.dart';
-import '../widgets/status_badge.dart';
 
 class TransactionsScreen extends ConsumerWidget {
   const TransactionsScreen({super.key});
@@ -18,7 +17,7 @@ class TransactionsScreen extends ConsumerWidget {
     final search = ref.watch(transactionsSearchProvider);
     final searchNotifier = ref.read(transactionsSearchProvider.notifier);
     final filtered = ref.watch(filteredCollectionsProvider);
-    final all = collectionsAsync.value ?? const <CollectionRecord>[];
+    final all = collectionsAsync.value ?? const <CollectionSummary>[];
 
     return Column(
       children: [
@@ -102,7 +101,7 @@ class TransactionsScreen extends ConsumerWidget {
                         final record = filtered[index];
                         return _TransactionRow(
                           record: record,
-                          onTap: () => Navigator.of(context).pushNamed(RouteNames.collectionDetail, arguments: record.id),
+                          onTap: () => Navigator.of(context).pushNamed(RouteNames.collectionDetail, arguments: record.chequeId),
                         );
                       },
                     ),
@@ -115,7 +114,7 @@ class TransactionsScreen extends ConsumerWidget {
 class _TransactionRow extends StatelessWidget {
   const _TransactionRow({required this.record, required this.onTap});
 
-  final CollectionRecord record;
+  final CollectionSummary record;
   final VoidCallback onTap;
 
   String _initials(String name) {
@@ -125,7 +124,6 @@ class _TransactionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final amountFmt = NumberFormat.currency(locale: 'en_US', symbol: '${record.currency} ', decimalDigits: 0).format(record.amount);
     final tsFmt = DateFormat('dd MMM yyyy · HH:mm').format(record.timestamp);
 
     return GestureDetector(
@@ -168,14 +166,7 @@ class _TransactionRow extends StatelessWidget {
                 ],
               ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(amountFmt, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, fontFamily: 'monospace')),
-                const SizedBox(height: 5),
-                StatusBadge(status: record.status),
-              ],
-            ),
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.textFaint),
           ],
         ),
       ),

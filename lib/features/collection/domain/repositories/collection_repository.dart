@@ -1,15 +1,16 @@
+import '../entities/collection_draft.dart';
 import '../entities/collection_record.dart';
+import '../entities/collection_summary.dart';
 
-/// Persistence + (eventually) sync for submitted collections. Today's
-/// implementation is local-only (see `CollectionLocalDataSource`); a real
-/// "push to the web application tracker" step would sit behind this same
-/// interface without presentation/domain code changing.
 abstract class CollectionRepository {
-  Future<List<CollectionRecord>> getAll();
+  /// `POST /cheques/{chequeId}/collection` — one atomic multipart
+  /// submission covering collector details + every file. [draft] must be
+  /// complete (`draft.isComplete`) and carry a selected [CollectionDraft.cheque].
+  Future<CollectionRecord> submit(CollectionDraft draft);
 
-  /// Persists [record] and returns the stored copy (e.g. with a
-  /// server-assigned status, once there's a real backend).
-  Future<CollectionRecord> submit(CollectionRecord record);
+  /// `GET /collections` — collection history, newest first.
+  Future<List<CollectionSummary>> getAll();
 
-  Future<CollectionRecord?> getById(String id);
+  /// `GET /collections/{chequeId}` — full detail for one collection.
+  Future<CollectionRecord> getByChequeId(String chequeId);
 }

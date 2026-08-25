@@ -21,22 +21,22 @@ void main() {
 
   test('delegates to the repository and returns its ResultSuccess', () async {
     when(
-      () => repository.login(agentId: any(named: 'agentId'), password: any(named: 'password')),
+      () => repository.login(username: any(named: 'username'), password: any(named: 'password')),
     ).thenAnswer((_) async => const ResultSuccess(user));
 
-    final result = await usecase(agentId: 'agent.rashid', password: 'agent123');
+    final result = await usecase(username: 'agent.rashid', password: 'agent123');
 
     expect(result, isA<ResultSuccess<User>>());
     expect((result as ResultSuccess<User>).data, user);
-    verify(() => repository.login(agentId: 'agent.rashid', password: 'agent123')).called(1);
+    verify(() => repository.login(username: 'agent.rashid', password: 'agent123')).called(1);
   });
 
   test('propagates a ResultError when the repository rejects the credentials', () async {
     when(
-      () => repository.login(agentId: any(named: 'agentId'), password: any(named: 'password')),
+      () => repository.login(username: any(named: 'username'), password: any(named: 'password')),
     ).thenAnswer((_) async => const ResultError(AuthFailure()));
 
-    final result = await usecase(agentId: 'agent.rashid', password: 'wrong');
+    final result = await usecase(username: 'agent.rashid', password: 'wrong');
 
     expect(result, isA<ResultError<User>>());
     expect((result as ResultError<User>).failure, isA<AuthFailure>());

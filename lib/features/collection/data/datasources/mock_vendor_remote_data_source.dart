@@ -1,14 +1,12 @@
 import '../../domain/entities/vendor.dart';
+import 'vendor_remote_data_source.dart';
 
-/// The vendor master is static seed data here — no serialization needed,
-/// so unlike collections there's no `VendorModel`; this returns [Vendor]
-/// entities directly. A real implementation would instead sync this list
-/// from the web application.
-abstract class VendorLocalDataSource {
-  Future<List<Vendor>> getVendors();
-}
-
-class VendorLocalDataSourceImpl implements VendorLocalDataSource {
+/// Stands in for `GET /vendors/available-for-collection` while DEV is
+/// unreachable from a device (see `AppEnvironment`'s doc comment) — wired
+/// into DI for debug builds only, per `dependency_injection.dart`. A real
+/// vendor sync would populate `code`/`trn`; both stay non-null here purely
+/// so the picker sheet has something to show under each name in mock mode.
+class MockVendorRemoteDataSource implements VendorRemoteDataSource {
   static final _vendors = [
     const Vendor(id: 'v1', name: 'Al Falah Building Materials LLC', code: 'VND-0114', trn: '100234567800003'),
     const Vendor(id: 'v2', name: 'Gulf Steel Trading Co.', code: 'VND-0127', trn: '100298871200003'),
@@ -25,5 +23,5 @@ class VendorLocalDataSourceImpl implements VendorLocalDataSource {
   ];
 
   @override
-  Future<List<Vendor>> getVendors() async => _vendors;
+  Future<List<Vendor>> getAvailableForCollection() async => _vendors;
 }

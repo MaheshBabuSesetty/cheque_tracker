@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_primary_button.dart';
+import '../../../auth/presentation/providers/auth_notifier.dart';
+import '../../../cheques/domain/entities/cheque.dart';
 import '../../domain/entities/collection_draft.dart';
 import '../../domain/entities/collection_record.dart';
 import '../providers/collect_draft_notifier.dart';
@@ -13,6 +15,7 @@ import '../providers/last_submitted_record_notifier.dart';
 import '../providers/main_tab_notifier.dart';
 import '../providers/vendors_provider.dart';
 import '../widgets/capture_tile.dart';
+import '../widgets/cheque_picker_sheet.dart';
 import '../widgets/signature_sheet.dart';
 import '../widgets/step_card.dart';
 import '../widgets/step_progress_bar.dart';
@@ -27,11 +30,45 @@ class CollectScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Recording a collection is VRM-only server-side (both the vendor list
+    // and the submit endpoint reject any other role) — gated here too so a
+    // non-VRM account sees a clear reason instead of a form that will only
+    // ever fail with "not authorized" partway through.
+    final user = ref.watch(authProvider).value;
+    if (user != null && !user.isVrm) {
+      return const _NotAuthorizedView();
+    }
+
     final lastRecord = ref.watch(lastSubmittedRecordProvider);
     if (lastRecord != null) {
       return _CollectionSuccessView(record: lastRecord);
     }
     return const _CollectForm();
+  }
+}
+
+class _NotAuthorizedView extends StatelessWidget {
+  const _NotAuthorizedView();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline, size: 32, color: AppColors.textFaint),
+            SizedBox(height: 12),
+            Text(
+              "Your account isn't authorized to record collections.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -45,8 +82,6 @@ class _CollectForm extends ConsumerStatefulWidget {
 class _CollectFormState extends ConsumerState<_CollectForm> {
   final _repNameController = TextEditingController();
   final _repMobileController = TextEditingController();
-  final _chequeNumberController = TextEditingController();
-  final _chequeAmountController = TextEditingController();
   bool _submitting = false;
 
   @override
@@ -55,16 +90,12 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
     final draft = ref.read(collectDraftProvider);
     _repNameController.text = draft.repName;
     _repMobileController.text = draft.repMobile;
-    _chequeNumberController.text = draft.chequeNumber;
-    _chequeAmountController.text = draft.chequeAmount;
   }
 
   @override
   void dispose() {
     _repNameController.dispose();
     _repMobileController.dispose();
-    _chequeNumberController.dispose();
-    _chequeAmountController.dispose();
     super.dispose();
   }
 
@@ -86,17 +117,6 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
     ref.listen(collectDraftProvider, (previous, next) {
       if (next.nameFromOcr && _repNameController.text != next.repName) {
         _repNameController.text = next.repName;
-      }
-      // Cheque OCR auto-fills (on a successful scan) or clears (on
-      // rejection/recapture) the number+amount fields — reconcile the
-      // controllers whenever that scan status changes.
-      if (previous?.chequeOcrStatus != next.chequeOcrStatus) {
-        if (_chequeNumberController.text != next.chequeNumber) {
-          _chequeNumberController.text = next.chequeNumber;
-        }
-        if (_chequeAmountController.text != next.chequeAmount) {
-          _chequeAmountController.text = next.chequeAmount;
-        }
       }
     });
 
@@ -166,12 +186,7 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
                 number: 4,
                 title: 'Cheque',
                 done: done[3],
-                child: _ChequeStep(
-                  draft: draft,
-                  notifier: notifier,
-                  numberController: _chequeNumberController,
-                  amountController: _chequeAmountController,
-                ),
+                child: _ChequeStep(draft: draft, notifier: notifier),
               ),
               StepCard(
                 number: 5,
@@ -259,11 +274,13 @@ class _VendorStep extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(vendor.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, height: 1.35)),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${vendor.code} · TRN ${vendor.trn}',
-                    style: const TextStyle(fontSize: 10.5, color: AppColors.goldLink, fontWeight: FontWeight.w600),
-                  ),
+                  if (vendor.code != null || vendor.trn != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      [if (vendor.code != null) vendor.code!, if (vendor.trn != null) 'TRN ${vendor.trn}'].join(' · '),
+                      style: const TextStyle(fontSize: 10.5, color: AppColors.goldLink, fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -577,71 +594,119 @@ class _OcrField extends StatelessWidget {
 }
 
 class _ChequeStep extends StatelessWidget {
-  const _ChequeStep({
-    required this.draft,
-    required this.notifier,
-    required this.numberController,
-    required this.amountController,
-  });
+  const _ChequeStep({required this.draft, required this.notifier});
 
   final CollectionDraft draft;
   final CollectDraftNotifier notifier;
-  final TextEditingController numberController;
-  final TextEditingController amountController;
+
+  @override
+  Widget build(BuildContext context) {
+    final vendor = draft.vendor;
+    final cheque = draft.cheque;
+
+    if (cheque == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            vendor == null
+                ? 'Pick a vendor in step 1 first.'
+                : "Pick one of this vendor's SIGNED cheques — the collection is recorded against it.",
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.45),
+          ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: vendor == null
+                ? null
+                : () async {
+                    final picked = await ChequePickerSheet.show(context, vendor);
+                    if (picked != null) notifier.pickCheque(picked);
+                  },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 13),
+              decoration: BoxDecoration(
+                color: vendor == null ? const Color(0xFFF4F2EC) : Colors.white,
+                border: Border.all(color: Colors.black.withValues(alpha: 0.16)),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Select a signed cheque…', style: TextStyle(color: AppColors.textFaint, fontSize: 14)),
+                  ),
+                  const Icon(Icons.search, size: 18, color: AppColors.textFaint),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return _ChequePhotoStep(draft: draft, notifier: notifier, cheque: cheque);
+  }
+}
+
+class _ChequePhotoStep extends StatelessWidget {
+  const _ChequePhotoStep({required this.draft, required this.notifier, required this.cheque});
+
+  final CollectionDraft draft;
+  final CollectDraftNotifier notifier;
+  final Cheque cheque;
 
   @override
   Widget build(BuildContext context) {
     final scan = draft.chequeScan;
     final scanning = draft.chequeOcrStatus == ChequeOcrStatus.scanning;
-    final done = draft.chequeOcrStatus == ChequeOcrStatus.done;
-    final rejected = draft.chequeOcrStatus == ChequeOcrStatus.rejected;
+    final hasScan = draft.chequeOcrStatus == ChequeOcrStatus.done || draft.chequeOcrStatus == ChequeOcrStatus.rejected;
+    final warnings = [
+      if (scan != null && !scan.accepted) 'Currency read as ${scan.detectedCurrency}, not AED.',
+      if (draft.chequeNumberMismatch) "Scanned cheque no. doesn't match the selected cheque.",
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'AED and USD cheques only — the copy is scanned and the currency verified automatically.',
-          style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.45),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: numberController,
-          onChanged: notifier.setChequeNumber,
-          style: const TextStyle(fontFamily: 'monospace'),
-          decoration: const InputDecoration(hintText: 'Cheque no.'),
-        ),
-        const SizedBox(height: 9),
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF4F2EC),
-                border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
-                borderRadius: BorderRadius.circular(11),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFAF8F1),
+            border: Border.all(color: const Color(0xFFECDFB6)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      cheque.chequeNumber,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, fontFamily: 'monospace'),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${cheque.bank} · ${NumberFormat.currency(locale: 'en_US', symbol: 'AED ', decimalDigits: 0).format(cheque.amount)}',
+                      style: const TextStyle(fontSize: 10.5, color: AppColors.goldLink, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
               ),
-              child: Row(
-                children: [
-                  _CurrencyChip(label: 'AED', active: draft.chequeCurrency == 'AED', onTap: () => notifier.setChequeCurrency('AED')),
-                  const SizedBox(width: 4),
-                  _CurrencyChip(label: 'USD', active: draft.chequeCurrency == 'USD', onTap: () => notifier.setChequeCurrency('USD')),
-                ],
+              TextButton(
+                onPressed: notifier.clearCheque,
+                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
+                child: const Text(
+                  'Change',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textMuted, decoration: TextDecoration.underline),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: amountController,
-                onChanged: notifier.setChequeAmount,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(hintText: 'Amount'),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 10),
         CaptureTile(
-          imagePath: rejected ? null : draft.chequeCopyPath,
+          imagePath: draft.chequeCopyPath,
           icon: const Icon(Icons.receipt_long_outlined, size: 22, color: AppColors.goldLink),
           label: 'Open camera to capture cheque copy',
           filledLabel: 'CHEQUE COPY CAPTURED',
@@ -663,14 +728,14 @@ class _ChequeStep extends StatelessWidget {
                 ),
                 const SizedBox(width: 9),
                 const Text(
-                  'Reading cheque (OCR)…',
+                  'Checking cheque photo…',
                   style: TextStyle(fontSize: 11.5, color: AppColors.goldLink, fontWeight: FontWeight.w700),
                 ),
               ],
             ),
           ),
         ],
-        if (done && scan != null) ...[
+        if (hasScan && warnings.isEmpty) ...[
           const SizedBox(height: 11),
           Container(
             padding: const EdgeInsets.all(13),
@@ -679,47 +744,29 @@ class _ChequeStep extends StatelessWidget {
               border: Border.all(color: const Color(0xFFCDEADB)),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    const Text('✓', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w700, fontSize: 12)),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        'Read from cheque · ${scan.confidence} confidence',
-                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.success),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: notifier.rescanCheque,
-                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
-                      child: const Text(
-                        'Re-scan',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.goldLink, decoration: TextDecoration.underline),
-                      ),
-                    ),
-                  ],
+                const Text('✓', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w700, fontSize: 12)),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    'Photo matches the selected cheque · ${scan?.confidence} confidence',
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.success),
+                  ),
                 ),
-                const SizedBox(height: 7),
-                _ChequeOcrRow(label: 'Drawee bank', value: scan.bank ?? '—'),
-                _ChequeOcrRow(label: 'Currency', value: draft.chequeCurrency),
-                _ChequeOcrRow(
-                  label: 'Amount',
-                  value: NumberFormat.currency(locale: 'en_US', symbol: '${draft.chequeCurrency} ', decimalDigits: 0)
-                      .format(draft.amountValue),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'Cheque no., amount and currency above were filled from this read — edit if the scan is off.',
-                  style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+                TextButton(
+                  onPressed: notifier.rescanCheque,
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
+                  child: const Text(
+                    'Re-scan',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.goldLink, decoration: TextDecoration.underline),
+                  ),
                 ),
               ],
             ),
           ),
         ],
-        if (rejected && scan != null) ...[
+        if (hasScan && warnings.isNotEmpty) ...[
           const SizedBox(height: 11),
           Container(
             padding: const EdgeInsets.all(13),
@@ -731,13 +778,14 @@ class _ChequeStep extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Currency not accepted — ${scan.detectedCurrency} detected',
-                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.danger),
-                ),
-                const SizedBox(height: 5),
+                for (final warning in warnings)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(warning, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.danger)),
+                  ),
+                const SizedBox(height: 3),
                 const Text(
-                  'Only AED and USD cheques can be recorded. Return this cheque to the vendor and capture an accepted one.',
+                  "Double-check you photographed the right cheque — you can still continue if you're sure.",
                   style: TextStyle(fontSize: 11.5, color: Color(0xFF3A4552), height: 1.5),
                 ),
                 const SizedBox(height: 11),
@@ -745,7 +793,7 @@ class _ChequeStep extends StatelessWidget {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: notifier.recaptureCheque,
-                    child: const Text('Capture another cheque'),
+                    child: const Text('Retake photo'),
                   ),
                 ),
               ],
@@ -753,50 +801,6 @@ class _ChequeStep extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _CurrencyChip extends StatelessWidget {
-  const _CurrencyChip({required this.label, required this.active, required this.onTap});
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        decoration: BoxDecoration(color: active ? AppColors.ink : Colors.transparent, borderRadius: BorderRadius.circular(8)),
-        child: Text(
-          label,
-          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.3, color: active ? AppColors.gold : AppColors.textFaint),
-        ),
-      ),
-    );
-  }
-}
-
-class _ChequeOcrRow extends StatelessWidget {
-  const _ChequeOcrRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
-          Text(value, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-        ],
-      ),
     );
   }
 }
@@ -1095,7 +1099,7 @@ class _CollectionSuccessView extends ConsumerWidget {
             const SizedBox(height: 16),
             Text('Collection recorded', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 19)),
             const SizedBox(height: 5),
-            Text(record.ref, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            Text(record.chequeNumber, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
             const SizedBox(height: 6),
             Text(record.vendorName, style: const TextStyle(fontSize: 12.5, color: Color(0xFF3A4552)), textAlign: TextAlign.center),
             const SizedBox(height: 20),

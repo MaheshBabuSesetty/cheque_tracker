@@ -5,35 +5,50 @@ import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
 import 'auth_remote_data_source.dart';
 
-/// Stands in for a real backend until one exists. Accepts exactly the demo
-/// field-agent credentials from the approved design
-/// ([AppConstants.demoAgentId] / [AppConstants.demoAgentPassword]) and
-/// otherwise fails the same way a real API would (`AuthException`).
-///
-/// This is the concrete [AuthRemoteDataSource] wired into DI today; see
-/// `dependency_injection.dart`. Swapping to [AuthRemoteDataSourceImpl] once
-/// a backend is live is a one-line change there — nothing above `data/`
-/// needs to know which one is active (Open/Closed, Liskov Substitution).
+/// Stands in for the real backend while DEV is unreachable from a device
+/// (see `AppEnvironment`'s doc comment for the Cloudflare/custom-domain
+/// blocker) — wired into DI for debug builds only, per
+/// `dependency_injection.dart`. Accepts exactly the demo VRM credentials
+/// ([AppConstants.demoUsername] / [AppConstants.demoPassword]) and otherwise
+/// fails the same way the real API would.
 class MockAuthRemoteDataSource implements AuthRemoteDataSource {
   @override
-  Future<AuthSession> login({required String agentId, required String password}) async {
+  Future<AuthSession> login({required String username, required String password}) async {
     await Future<void>.delayed(const Duration(milliseconds: 600));
-    final matches = agentId.trim().toLowerCase() == AppConstants.demoAgentId &&
-        password == AppConstants.demoAgentPassword;
+    final matches = username.trim().toLowerCase() == AppConstants.demoUsername && password == AppConstants.demoPassword;
     if (!matches) {
-      throw const AuthException('That agent ID or password is not recognised.');
+      throw const AuthException('Invalid username or password.');
     }
-    return (
-      token: 'mock-token-${Random().nextInt(1 << 32)}',
-      user: const UserModel(id: 'agent-rashid', email: 'agent.rashid@sobha.com', name: 'Rashid Kamal'),
-    );
+    return _mockSession();
   }
 
   @override
-  Future<void> logout() async {}
+  Future<AuthSession> refresh({required String refreshToken}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    return _mockSession();
+  }
+
+  @override
+  Future<void> logout({required String refreshToken}) async {}
 
   @override
   Future<UserModel> getCurrentUser() async {
     throw const AuthException();
+  }
+
+  AuthSession _mockSession() {
+    final now = DateTime.now().toUtc();
+    return (
+      accessToken: 'mock-access-${Random().nextInt(1 << 32)}',
+      accessTokenExpiresAtUtc: now.add(const Duration(minutes: 15)),
+      refreshToken: 'mock-refresh-${Random().nextInt(1 << 32)}',
+      refreshTokenExpiresAtUtc: now.add(const Duration(days: 14)),
+      user: const UserModel(
+        id: 'agent-rashid',
+        email: 'agent.rashid@sobha.com',
+        name: 'Rashid Kamal',
+        roles: ['VRM'],
+      ),
+    );
   }
 }

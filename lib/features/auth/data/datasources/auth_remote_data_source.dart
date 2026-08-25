@@ -1,62 +1,92 @@
 import 'package:dio/dio.dart';
 
 import '../../../../core/constants/api_endpoints.dart';
-import '../../../../core/error/exceptions.dart';
+import '../../../../core/network/api_error_parser.dart';
 import '../models/login_request_dto.dart';
 import '../models/user_model.dart';
 
-typedef AuthSession = ({String token, UserModel user});
+typedef AuthSession = ({
+  String accessToken,
+  DateTime accessTokenExpiresAtUtc,
+  String refreshToken,
+  DateTime refreshTokenExpiresAtUtc,
+  UserModel user,
+});
 
 abstract class AuthRemoteDataSource {
-  Future<AuthSession> login({required String agentId, required String password});
-  Future<void> logout();
+  Future<AuthSession> login({required String username, required String password});
+  Future<AuthSession> refresh({required String refreshToken});
+  Future<void> logout({required String refreshToken});
   Future<UserModel> getCurrentUser();
 }
 
-/// Real backend-backed implementation. Not currently wired into DI — there
-/// is no live auth API yet, so [MockAuthRemoteDataSource] stands in for it.
-/// Swapping back is a one-line change in `dependency_injection.dart` once a
-/// backend exists; nothing above `data/` needs to know.
+/// Real backend-backed implementation. Not currently wired into DI in
+/// release-by-default fashion — see `dependency_injection.dart`'s
+/// `authRemoteDataSourceProvider` doc comment for why [MockAuthRemoteDataSource]
+/// still stands in for debug builds.
+///
+/// Deliberately split across two [Dio] instances: [unauthenticatedDio]
+/// carries no [AuthInterceptor] and is used for login/refresh/logout, which
+/// never need a bearer token and must never trigger the refresh-on-401
+/// logic; [dio] is the normal authenticated client, used only for
+/// `getCurrentUser` (`GET /auth/me`), which does need the bearer token the
+/// interceptor already attaches from storage.
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
-  const AuthRemoteDataSourceImpl(this._dio);
+  const AuthRemoteDataSourceImpl({required this.unauthenticatedDio, required this.dio});
 
-  final Dio _dio;
+  final Dio unauthenticatedDio;
+  final Dio dio;
 
   @override
-  Future<AuthSession> login({required String agentId, required String password}) async {
+  Future<AuthSession> login({required String username, required String password}) async {
     try {
-      final response = await _dio.post<Map<String, dynamic>>(
+      final response = await unauthenticatedDio.post<Map<String, dynamic>>(
         ApiEndpoints.login,
-        data: LoginRequestDto(agentId: agentId, password: password).toJson(),
+        data: LoginRequestDto(username: username, password: password).toJson(),
       );
-      final data = response.data!;
-      return (
-        token: data['token'] as String,
-        user: UserModel.fromJson(data['user'] as Map<String, dynamic>),
-      );
+      return _sessionFromJson(response.data!);
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) throw const AuthException();
-      throw const ServerException();
+      throw ApiErrorParser.parse(e);
     }
   }
 
   @override
-  Future<void> logout() async {
+  Future<AuthSession> refresh({required String refreshToken}) async {
     try {
-      await _dio.post<void>(ApiEndpoints.logout);
-    } on DioException {
-      throw const ServerException();
+      final response = await unauthenticatedDio.post<Map<String, dynamic>>(
+        ApiEndpoints.refresh,
+        data: {'refreshToken': refreshToken},
+      );
+      return _sessionFromJson(response.data!);
+    } on DioException catch (e) {
+      throw ApiErrorParser.parse(e);
+    }
+  }
+
+  @override
+  Future<void> logout({required String refreshToken}) async {
+    try {
+      await unauthenticatedDio.post<void>(ApiEndpoints.logout, data: {'refreshToken': refreshToken});
+    } on DioException catch (e) {
+      throw ApiErrorParser.parse(e);
     }
   }
 
   @override
   Future<UserModel> getCurrentUser() async {
     try {
-      final response = await _dio.get<Map<String, dynamic>>(ApiEndpoints.currentUser);
+      final response = await dio.get<Map<String, dynamic>>(ApiEndpoints.currentUser);
       return UserModel.fromJson(response.data!);
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) throw const AuthException();
-      throw const ServerException();
+      throw ApiErrorParser.parse(e);
     }
   }
+
+  AuthSession _sessionFromJson(Map<String, dynamic> json) => (
+    accessToken: json['accessToken'] as String,
+    accessTokenExpiresAtUtc: DateTime.parse(json['accessTokenExpiresAtUtc'] as String),
+    refreshToken: json['refreshToken'] as String,
+    refreshTokenExpiresAtUtc: DateTime.parse(json['refreshTokenExpiresAtUtc'] as String),
+    user: UserModel.fromJson(json['user'] as Map<String, dynamic>),
+  );
 }

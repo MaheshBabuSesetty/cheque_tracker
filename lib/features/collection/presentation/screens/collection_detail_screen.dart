@@ -1,39 +1,36 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/network/authenticated_network_image.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/collection_record.dart';
-import '../providers/collections_notifier.dart';
-import '../widgets/status_badge.dart';
+import '../providers/collection_detail_provider.dart';
 
 /// Read-only drill-down for one collection, reached from a transactions
-/// row. Looks the record up in the already-loaded [collectionsProvider]
-/// list rather than issuing a separate fetch.
+/// row. The transactions list only carries the slim `CollectionSummary`
+/// shape (no attachment URLs, no Emirates ID detail), so this fetches the
+/// full record from `GET /collections/{chequeId}` on its own rather than
+/// searching an already-loaded list.
 class CollectionDetailScreen extends ConsumerWidget {
-  const CollectionDetailScreen({super.key, required this.recordId});
+  const CollectionDetailScreen({super.key, required this.chequeId});
 
-  final String recordId;
+  final String chequeId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final records = ref.watch(collectionsProvider).value ?? const <CollectionRecord>[];
-    CollectionRecord? record;
-    for (final r in records) {
-      if (r.id == recordId) {
-        record = r;
-        break;
-      }
-    }
+    final recordAsync = ref.watch(collectionDetailProvider(chequeId));
 
     return Scaffold(
       backgroundColor: AppColors.cream,
       body: SafeArea(
-        child: record == null
-            ? const Center(child: Text('Record not found.', style: TextStyle(color: AppColors.textFaint)))
-            : _DetailBody(record: record),
+        child: recordAsync.when(
+          data: (record) => _DetailBody(record: record),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => const Center(
+            child: Text('Could not load this collection.', style: TextStyle(color: AppColors.textFaint)),
+          ),
+        ),
       ),
     );
   }
@@ -71,7 +68,7 @@ class _DetailBody extends StatelessWidget {
                 const SizedBox(height: 11),
                 Text(record.vendorName, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 17.5)),
                 const SizedBox(height: 5),
-                Text('${record.ref} · $tsFmt', style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                Text('${record.chequeNumber} · $tsFmt', style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
               ],
             ),
           ),
@@ -85,7 +82,7 @@ class _DetailBody extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('CHEQUE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 0.4)),
-                        StatusBadge(status: record.status),
+                        if (record.newChequeStatus != null) _StatusChip(label: record.newChequeStatus!),
                       ],
                     ),
                     const SizedBox(height: 13),
@@ -100,10 +97,10 @@ class _DetailBody extends StatelessWidget {
                     const Text('REPRESENTATIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 0.4)),
                     const SizedBox(height: 12),
                     _DetailRow(label: 'Name', value: record.repName),
-                    _DetailRow(label: 'Mobile', value: record.repMobile),
-                    _DetailRow(label: 'Emirates ID', value: record.emiratesId),
-                    _DetailRow(label: 'Nationality', value: record.nationality),
-                    _DetailRow(label: 'ID expiry', value: record.expiry, isLast: true),
+                    _DetailRow(label: 'Mobile', value: record.repMobile.isEmpty ? '—' : record.repMobile),
+                    _DetailRow(label: 'Emirates ID', value: record.emiratesId.isEmpty ? '—' : record.emiratesId),
+                    _DetailRow(label: 'Nationality', value: record.nationality.isEmpty ? '—' : record.nationality),
+                    _DetailRow(label: 'ID expiry', value: record.expiry.isEmpty ? '—' : record.expiry, isLast: true),
                   ],
                 ),
                 const SizedBox(height: 11),
@@ -119,16 +116,16 @@ class _DetailBody extends StatelessWidget {
                       crossAxisSpacing: 9,
                       childAspectRatio: 1.4,
                       children: [
-                        _AttachmentTile(label: 'Rep photo', path: record.repPhotoPath),
-                        _AttachmentTile(label: 'ID front', path: record.idFrontPath),
-                        _AttachmentTile(label: 'ID back', path: record.idBackPath),
-                        _AttachmentTile(label: 'Cheque copy', path: record.chequeCopyPath),
-                        if (record.voucherPath != null) _AttachmentTile(label: 'Voucher', path: record.voucherPath),
+                        _AttachmentTile(label: 'Rep photo', url: record.collectorPhotoUrl),
+                        _AttachmentTile(label: 'ID front', url: record.idFrontUrl),
+                        _AttachmentTile(label: 'ID back', url: record.idBackUrl),
+                        _AttachmentTile(label: 'Cheque copy', url: record.chequePhotoUrl),
+                        if (record.voucherUrl != null) _AttachmentTile(label: 'Voucher', url: record.voucherUrl),
                       ],
                     ),
                   ],
                 ),
-                if (record.supportingDocPaths.isNotEmpty) ...[
+                if (record.supportingDocuments.isNotEmpty) ...[
                   const SizedBox(height: 11),
                   _DetailCard(
                     children: [
@@ -138,10 +135,14 @@ class _DetailBody extends StatelessWidget {
                         spacing: 9,
                         runSpacing: 9,
                         children: [
-                          for (final path in record.supportingDocPaths)
+                          for (final doc in record.supportingDocuments)
                             ClipRRect(
                               borderRadius: BorderRadius.circular(11),
-                              child: Image.file(File(path), width: 74, height: 74, fit: BoxFit.cover),
+                              child: SizedBox(
+                                width: 74,
+                                height: 74,
+                                child: AuthenticatedNetworkImage(url: doc.url, fit: BoxFit.cover),
+                              ),
                             ),
                         ],
                       ),
@@ -161,21 +162,39 @@ class _DetailBody extends StatelessWidget {
                         color: const Color(0xFFFBFAF6),
                       ),
                       alignment: Alignment.center,
-                      child: record.signaturePath != null
+                      child: record.signatureUrl != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(11),
-                              child: Image.file(File(record.signaturePath!), fit: BoxFit.contain),
+                              child: AuthenticatedNetworkImage(url: record.signatureUrl!, fit: BoxFit.contain),
                             )
                           : const Text('Signature stored on the web record', style: TextStyle(fontSize: 11.5, color: AppColors.textFaint)),
                     ),
                     const SizedBox(height: 9),
-                    Text('Captured on device · $tsFmt', style: const TextStyle(fontSize: 10.5, color: AppColors.textFaint)),
+                    Text('Collected · $tsFmt', style: const TextStyle(fontSize: 10.5, color: AppColors.textFaint)),
                   ],
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: AppColors.successBg, borderRadius: BorderRadius.circular(20)),
+      child: Text(
+        label.toUpperCase(),
+        style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.4, color: AppColors.success),
       ),
     );
   }
@@ -228,24 +247,27 @@ class _DetailRow extends StatelessWidget {
 }
 
 class _AttachmentTile extends StatelessWidget {
-  const _AttachmentTile({required this.label, required this.path});
+  const _AttachmentTile({required this.label, required this.url});
 
   final String label;
-  final String? path;
+  final String? url;
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = url;
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
         borderRadius: BorderRadius.circular(11),
         color: const Color(0xFFFAF8F1),
-        image: path != null ? DecorationImage(image: FileImage(File(path!)), fit: BoxFit.cover) : null,
       ),
       alignment: Alignment.center,
-      child: path != null
-          ? null
-          : Text(label, style: const TextStyle(fontSize: 10.5, color: AppColors.textFaint, fontWeight: FontWeight.w600)),
+      child: imageUrl == null
+          ? Text(label, style: const TextStyle(fontSize: 10.5, color: AppColors.textFaint, fontWeight: FontWeight.w600))
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: AuthenticatedNetworkImage(url: imageUrl, fit: BoxFit.cover),
+            ),
     );
   }
 }

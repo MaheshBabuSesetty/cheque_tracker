@@ -8,6 +8,6 @@ class RouteNames {
   static const String home = '/home';
   static const String profile = '/profile';
 
-  /// Pushed with the record id as `settings.arguments`.
+  /// Pushed with the cheque id as `settings.arguments`.
   static const String collectionDetail = '/collection-detail';
 }

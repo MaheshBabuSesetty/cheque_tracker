@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/dependency_injection.dart';
+import '../../domain/usecases/get_collection_detail.dart';
 import '../../domain/usecases/get_collections.dart';
 import '../../domain/usecases/get_vendors.dart';
 import '../../domain/usecases/scan_cheque.dart';
@@ -16,6 +17,10 @@ final getVendorsProvider = Provider<GetVendors>((ref) {
 
 final getCollectionsProvider = Provider<GetCollections>((ref) {
   return GetCollections(ref.watch(collectionRepositoryProvider));
+});
+
+final getCollectionDetailProvider = Provider<GetCollectionDetail>((ref) {
+  return GetCollectionDetail(ref.watch(collectionRepositoryProvider));
 });
 
 final submitCollectionProvider = Provider<SubmitCollection>((ref) {

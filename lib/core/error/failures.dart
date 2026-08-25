@@ -28,6 +28,29 @@ class AuthFailure extends Failure {
   const AuthFailure([super.message = 'Invalid credentials.']);
 }
 
+/// A role-gated endpoint rejected the request (403) — distinct from
+/// [AuthFailure] so the UI can say "not authorized" rather than "bad
+/// credentials".
+class ForbiddenFailure extends Failure {
+  const ForbiddenFailure([super.message = "You don't have permission to do that."]);
+}
+
+/// The per-IP rate limit on login/refresh was hit (429). Must never be
+/// shown as an auth failure.
+class RateLimitFailure extends Failure {
+  const RateLimitFailure([super.message = 'Too many attempts. Please wait a moment and try again.']);
+}
+
+/// A 400 model-validation response, field name to error messages.
+class ValidationFailure extends Failure {
+  const ValidationFailure(this.fieldErrors, [super.message = 'Some fields need attention.']);
+
+  final Map<String, List<String>> fieldErrors;
+
+  @override
+  List<Object?> get props => [message, fieldErrors];
+}
+
 class UnexpectedFailure extends Failure {
   const UnexpectedFailure([super.message = 'An unexpected error occurred.']);
 }

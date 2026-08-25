@@ -9,7 +9,7 @@ part 'user_model.g.dart';
 /// only `data/datasources` and `data/repositories` should.
 @JsonSerializable()
 class UserModel extends User {
-  const UserModel({required super.id, required super.email, required super.name});
+  const UserModel({required super.id, required super.email, required super.name, super.roles});
 
   factory UserModel.fromJson(Map<String, dynamic> json) => _$UserModelFromJson(json);
 
