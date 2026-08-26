@@ -16,12 +16,4 @@ class AppConstants {
   static const String prefsAuthTokenKey = 'auth_token';
   static const String prefsUserIdKey = 'auth_user_id';
   static const String prefsThemeModeKey = 'theme_mode';
-
-  /// Demo VRM credentials, matching the approved design's "Use demo agent"
-  /// quick-fill. Shared between the login screen (which fills the fields)
-  /// and [MockAuthRemoteDataSource] (which accepts them) — the mock stays
-  /// the debug-build default while DEV is unreachable (see
-  /// [AppEnvironment]'s doc comment), so there's one source of truth for it.
-  static const String demoUsername = 'agent.rashid';
-  static const String demoPassword = 'agent123';
 }

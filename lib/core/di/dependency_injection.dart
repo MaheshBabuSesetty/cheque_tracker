@@ -1,6 +1,5 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -9,13 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/auth/data/datasources/auth_local_data_source.dart';
 import '../../features/auth/data/datasources/auth_remote_data_source.dart';
-import '../../features/auth/data/datasources/mock_auth_remote_data_source.dart';
 import '../../features/auth/data/repositories/auth_repository_impl.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
 import '../../features/collection/data/datasources/collection_remote_data_source.dart';
 import '../../features/collection/data/datasources/mlkit_cheque_ocr_service.dart';
 import '../../features/collection/data/datasources/mlkit_emirates_id_ocr_service.dart';
-import '../../features/collection/data/datasources/mock_vendor_remote_data_source.dart';
 import '../../features/collection/data/datasources/vendor_remote_data_source.dart';
 import '../../features/collection/data/repositories/collection_repository_impl.dart';
 import '../../features/collection/data/repositories/vendor_repository_impl.dart';
@@ -24,7 +21,6 @@ import '../../features/collection/domain/repositories/collection_repository.dart
 import '../../features/collection/domain/repositories/emirates_id_ocr_service.dart';
 import '../../features/collection/domain/repositories/vendor_repository.dart';
 import '../../features/cheques/data/datasources/cheque_remote_data_source.dart';
-import '../../features/cheques/data/datasources/mock_cheque_remote_data_source.dart';
 import '../../features/cheques/data/repositories/cheque_repository_impl.dart';
 import '../../features/cheques/domain/repositories/cheque_repository.dart';
 import '../../services/analytics_service.dart';
@@ -121,15 +117,10 @@ final dioClientProvider = Provider<Dio>((ref) {
 // `AuthRepository` abstraction, and this is the one place allowed to know
 // about both the abstraction and its concrete implementation.
 
-// There is no live auth backend yet. `MockAuthRemoteDataSource` (accepts the
-// demo agent credentials) is only ever wired in debug builds, for local
-// development convenience — it must never reach a release build, since it
-// would otherwise grant anyone who opens the app full access with a
-// publicly-visible credential. Release/profile builds get the real
-// Dio-backed `AuthRemoteDataSourceImpl`, which will simply fail to log in
-// until a backend exists — that's the correct failure mode, not a bug.
+// Always the real Dio-backed implementation — auth hits the live DEV API
+// (see `AppEnvironment`) rather than the local `MockAuthRemoteDataSource`
+// that used to stand in for debug builds.
 final authRemoteDataSourceProvider = Provider<AuthRemoteDataSource>((ref) {
-  if (kDebugMode) return MockAuthRemoteDataSource();
   return AuthRemoteDataSourceImpl(
     unauthenticatedDio: ref.watch(unauthenticatedDioClientProvider),
     dio: ref.watch(dioClientProvider),
@@ -156,11 +147,8 @@ final imageCaptureServiceProvider = Provider<ImageCaptureService>((ref) {
   return DeviceImageCaptureService(ref.watch(imagePickerProvider));
 });
 
-// `GET /vendors/available-for-collection` is VRM-only and, like auth,
-// unreachable on DEV right now — see `AppEnvironment`'s doc comment. The
-// mock stays the debug-build default until that infra lands.
+// `GET /vendors/available-for-collection` is VRM-only.
 final vendorRemoteDataSourceProvider = Provider<VendorRemoteDataSource>((ref) {
-  if (kDebugMode) return MockVendorRemoteDataSource();
   return VendorRemoteDataSourceImpl(ref.watch(dioClientProvider));
 });
 
@@ -170,13 +158,7 @@ final vendorRepositoryProvider = Provider<VendorRepository>((ref) {
 
 // --- Cheques feature wiring ---------------------------------------------
 //
-// `GET /cheques` is unreachable on DEV right now — see `AppEnvironment`'s
-// doc comment. The mock stays the debug-build default until that infra
-// lands, mirroring the auth/vendor pattern above (otherwise the "select a
-// cheque" step in the collect flow would have nothing to pick from in any
-// local/demo build).
 final chequeRemoteDataSourceProvider = Provider<ChequeRemoteDataSource>((ref) {
-  if (kDebugMode) return MockChequeRemoteDataSource();
   return ChequeRemoteDataSourceImpl(ref.watch(dioClientProvider));
 });
 

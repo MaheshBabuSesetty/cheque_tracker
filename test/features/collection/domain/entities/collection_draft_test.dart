@@ -72,7 +72,7 @@ void main() {
     );
 
     expect(draft.isMobileValid, isFalse);
-    expect(draft.stepsDone[1], isFalse);
+    expect(draft.stepsDone[2], isFalse);
     expect(draft.missingStepNames, contains('representative details'));
   });
 

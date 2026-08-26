@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../cheques/domain/entities/cheque.dart';
+import '../../../cheques/presentation/providers/cheque_providers.dart';
 import '../../../../core/di/dependency_injection.dart';
 import '../../domain/entities/collection_draft.dart';
 import '../../domain/entities/collection_record.dart';
@@ -11,6 +12,21 @@ import 'collection_providers.dart';
 import 'collections_notifier.dart';
 
 part 'collect_draft_notifier.g.dart';
+
+/// Outcome of [CollectDraftNotifier.scanToSelectCheque].
+enum ChequeScanMatchResult {
+  /// A SIGNED cheque with a matching number was found and picked.
+  matched,
+
+  /// The agent backed out of the camera — not an error, nothing to show.
+  cancelled,
+
+  /// OCR couldn't read a cheque number off the photo at all.
+  unreadable,
+
+  /// A number was read, but none of the vendor's SIGNED cheques match it.
+  noMatch,
+}
 
 /// State for the in-progress "New collection" form. One notifier per
 /// active draft — [submit] resets it back to empty on success, ready for
@@ -86,6 +102,43 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
         chequeOcrStatus: ChequeOcrStatus.idle,
         chequeScan: () => null,
       );
+
+  /// Scans a photo of the physical cheque and, if the number it reads
+  /// matches one of [vendor]'s currently-SIGNED cheques, picks that cheque
+  /// automatically — an alternative to browsing [ChequePickerSheet]'s list
+  /// by hand. Never fabricates a match: an unreadable photo or a number
+  /// that isn't on file both fall through to the caller to handle (e.g.
+  /// show a message and let the agent retry or fall back to the list).
+  ///
+  /// On a match, the photo just taken to find it also becomes the cheque
+  /// copy attachment — it's already a photo of the right cheque, so the
+  /// agent isn't asked to capture the same cheque a second time.
+  Future<ChequeScanMatchResult> scanToSelectCheque(Vendor vendor) async {
+    final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'cheque-scan-select');
+    if (path == null) return ChequeScanMatchResult.cancelled;
+
+    final scan = await ref.read(scanChequeProvider)(path);
+    final scannedNumber = scan.chequeNumber?.trim();
+    if (scannedNumber == null || scannedNumber.isEmpty) return ChequeScanMatchResult.unreadable;
+
+    final cheques = await ref.read(signedChequesForVendorProvider(vendor).future);
+    Cheque? match;
+    for (final candidate in cheques) {
+      if (candidate.chequeNumber.trim().toUpperCase() == scannedNumber.toUpperCase()) {
+        match = candidate;
+        break;
+      }
+    }
+    if (match == null) return ChequeScanMatchResult.noMatch;
+
+    state = state.copyWith(
+      cheque: () => match,
+      chequeCopyPath: () => path,
+      chequeScan: () => scan,
+      chequeOcrStatus: scan.accepted ? ChequeOcrStatus.done : ChequeOcrStatus.rejected,
+    );
+    return ChequeScanMatchResult.matched;
+  }
 
   void clearCheque() => state = state.copyWith(
         cheque: () => null,

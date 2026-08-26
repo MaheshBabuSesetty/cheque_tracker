@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,6 +26,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -41,12 +41,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           username: _usernameController.text.trim(),
           password: _passwordController.text,
         );
-  }
-
-  void _useDemoAgent() {
-    _usernameController.text = AppConstants.demoUsername;
-    _passwordController.text = AppConstants.demoPassword;
-    _submit();
   }
 
   @override
@@ -142,9 +136,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               LabeledTextField(
                                 label: 'PASSWORD',
                                 controller: _passwordController,
-                                obscureText: true,
+                                obscureText: _obscurePassword,
                                 hintText: '••••••••',
                                 validator: Validators.password,
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                    color: AppColors.textMuted,
+                                    size: 20,
+                                  ),
+                                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                ),
                               ),
                               if (errorMessage != null) ...[
                                 const SizedBox(height: 9),
@@ -161,23 +163,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 backgroundColor: AppColors.gold,
                                 foregroundColor: Colors.black,
                               ),
-                              // Local-development convenience only — must never render in a
-                              // release build, since it would advertise a working credential
-                              // to anyone who opens the app. See the security audit's F-1.
-                              if (kDebugMode)
-                                Center(
-                                  child: TextButton(
-                                    onPressed: isLoading ? null : _useDemoAgent,
-                                    child: Text(
-                                      'Use demo agent — ${AppConstants.demoUsername} / ${AppConstants.demoPassword}',
-                                      style: const TextStyle(
-                                        color: AppColors.goldLink,
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ),
                             ],
                           ),
                         ),

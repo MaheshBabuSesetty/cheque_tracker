@@ -10,6 +10,7 @@ import '../../../auth/presentation/providers/auth_notifier.dart';
 import '../../../cheques/domain/entities/cheque.dart';
 import '../../domain/entities/collection_draft.dart';
 import '../../domain/entities/collection_record.dart';
+import '../../domain/entities/vendor.dart';
 import '../providers/collect_draft_notifier.dart';
 import '../providers/last_submitted_record_notifier.dart';
 import '../providers/main_tab_notifier.dart';
@@ -167,20 +168,20 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
               ),
               StepCard(
                 number: 2,
-                title: 'Representative',
+                title: 'Emirates ID',
                 done: done[1],
+                child: _EmiratesIdStep(draft: draft, notifier: notifier),
+              ),
+              StepCard(
+                number: 3,
+                title: 'Representative',
+                done: done[2],
                 child: _RepresentativeStep(
                   draft: draft,
                   notifier: notifier,
                   repNameController: _repNameController,
                   repMobileController: _repMobileController,
                 ),
-              ),
-              StepCard(
-                number: 3,
-                title: 'Emirates ID',
-                done: done[2],
-                child: _EmiratesIdStep(draft: draft, notifier: notifier),
               ),
               StepCard(
                 number: 4,
@@ -593,14 +594,42 @@ class _OcrField extends StatelessWidget {
   }
 }
 
-class _ChequeStep extends StatelessWidget {
+class _ChequeStep extends StatefulWidget {
   const _ChequeStep({required this.draft, required this.notifier});
 
   final CollectionDraft draft;
   final CollectDraftNotifier notifier;
 
   @override
+  State<_ChequeStep> createState() => _ChequeStepState();
+}
+
+class _ChequeStepState extends State<_ChequeStep> {
+  bool _scanning = false;
+  String? _scanError;
+
+  Future<void> _scanToSelect(Vendor vendor) async {
+    setState(() {
+      _scanning = true;
+      _scanError = null;
+    });
+    final result = await widget.notifier.scanToSelectCheque(vendor);
+    if (!mounted) return;
+    setState(() {
+      _scanning = false;
+      _scanError = switch (result) {
+        ChequeScanMatchResult.matched || ChequeScanMatchResult.cancelled => null,
+        ChequeScanMatchResult.unreadable =>
+          "Couldn't read a cheque number from that photo. Try again, or pick from the list below.",
+        ChequeScanMatchResult.noMatch => 'No SIGNED cheque on file matches that number. Try again, or pick from the list below.',
+      };
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final draft = widget.draft;
+    final notifier = widget.notifier;
     final vendor = draft.vendor;
     final cheque = draft.cheque;
 
@@ -611,10 +640,56 @@ class _ChequeStep extends StatelessWidget {
           Text(
             vendor == null
                 ? 'Pick a vendor in step 1 first.'
-                : "Pick one of this vendor's SIGNED cheques — the collection is recorded against it.",
+                : "Scan one of this vendor's SIGNED cheques, or pick it from the list — the collection is recorded against it.",
             style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.45),
           ),
           const SizedBox(height: 10),
+          GestureDetector(
+            onTap: vendor == null || _scanning ? null : () => _scanToSelect(vendor),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 13),
+              decoration: BoxDecoration(
+                color: vendor == null ? const Color(0xFFF4F2EC) : const Color(0xFFFAF8F1),
+                border: Border.all(color: vendor == null ? Colors.black.withValues(alpha: 0.16) : const Color(0xFFECDFB6)),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Row(
+                children: [
+                  if (_scanning)
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.goldLink),
+                    )
+                  else
+                    const Icon(Icons.photo_camera_outlined, size: 18, color: AppColors.goldLink),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _scanning ? 'Reading cheque…' : 'Scan a cheque to auto-select',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF3A4552)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_scanError != null) ...[
+            const SizedBox(height: 7),
+            Text(_scanError!, style: const TextStyle(fontSize: 11, color: AppColors.danger, fontWeight: FontWeight.w600, height: 1.4)),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: Container(height: 1, color: Colors.black.withValues(alpha: 0.09))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 9),
+                child: Text('OR', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black.withValues(alpha: 0.3))),
+              ),
+              Expanded(child: Container(height: 1, color: Colors.black.withValues(alpha: 0.09))),
+            ],
+          ),
+          const SizedBox(height: 12),
           GestureDetector(
             onTap: vendor == null
                 ? null
@@ -667,52 +742,45 @@ class _ChequePhotoStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFAF8F1),
-            border: Border.all(color: const Color(0xFFECDFB6)),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      cheque.chequeNumber,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, fontFamily: 'monospace'),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${cheque.bank} · ${NumberFormat.currency(locale: 'en_US', symbol: 'AED ', decimalDigits: 0).format(cheque.amount)}',
-                      style: const TextStyle(fontSize: 10.5, color: AppColors.goldLink, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                cheque.bank,
+                style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600),
               ),
-              TextButton(
-                onPressed: notifier.clearCheque,
-                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
-                child: const Text(
-                  'Change',
-                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textMuted, decoration: TextDecoration.underline),
-                ),
+            ),
+            TextButton(
+              onPressed: notifier.clearCheque,
+              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
+              child: const Text(
+                'Change cheque',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted, decoration: TextDecoration.underline),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        const SizedBox(height: 10),
-        CaptureTile(
-          imagePath: draft.chequeCopyPath,
-          icon: const Icon(Icons.receipt_long_outlined, size: 22, color: AppColors.goldLink),
-          label: 'Open camera to capture cheque copy',
-          filledLabel: 'CHEQUE COPY CAPTURED',
-          aspectRatio: 2.35,
-          scanning: scanning,
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _ChequeInfoField(label: 'CHEQUE NO.', value: cheque.chequeNumber, monospace: true),
+            const SizedBox(width: 10),
+            _ChequeInfoField(
+              label: 'AMOUNT (AED)',
+              value: NumberFormat.currency(locale: 'en_US', symbol: '', decimalDigits: 0).format(cheque.amount).trim(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
           onTap: notifier.captureChequeCopy,
+          child: _DashedCaptureBox(
+            imagePath: draft.chequeCopyPath,
+            icon: Icons.receipt_long_outlined,
+            label: 'Capture or attach cheque copy',
+            filledLabel: 'CHEQUE COPY CAPTURED',
+          ),
         ),
         if (scanning) ...[
           const SizedBox(height: 11),
@@ -803,6 +871,156 @@ class _ChequePhotoStep extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Read-only display of one field from the selected [Cheque] (server
+/// truth — never user-editable, unlike a real [TextField]).
+class _ChequeInfoField extends StatelessWidget {
+  const _ChequeInfoField({required this.label, required this.value, this.monospace = false});
+
+  final String label;
+  final String value;
+  final bool monospace;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFAFAF7),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.14)),
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 9.5, color: AppColors.textFaint, fontWeight: FontWeight.w700, letterSpacing: 0.3)),
+            const SizedBox(height: 3),
+            Text(
+              value,
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, fontFamily: monospace ? 'monospace' : null),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A dashed-bordered capture target — visually distinct from [CaptureTile]'s
+/// solid border, matching the approved design's cheque-copy step
+/// specifically. Shows the captured photo once [imagePath] is set.
+class _DashedCaptureBox extends StatelessWidget {
+  const _DashedCaptureBox({
+    required this.imagePath,
+    required this.icon,
+    required this.label,
+    required this.filledLabel,
+  });
+
+  final String? imagePath;
+  final IconData icon;
+  final String label;
+  final String filledLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final filled = imagePath != null;
+    return AspectRatio(
+      aspectRatio: 2.1,
+      child: CustomPaint(
+        painter: _DashedBorderPainter(color: filled ? const Color(0xFF05744F) : Colors.black.withValues(alpha: 0.28)),
+        child: Container(
+          decoration: BoxDecoration(
+            color: filled ? const Color(0xFFEEF8F2) : const Color(0xFFFBFAF6),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: filled
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.file(File(imagePath!), fit: BoxFit.cover),
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 7),
+                          color: Colors.black.withValues(alpha: 0.62),
+                          child: Text(
+                            filledLabel,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppColors.goldLink, width: 1.4),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(icon, size: 17, color: AppColors.goldLink),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Paints a dashed rounded-rectangle outline — `BoxDecoration` has no
+/// built-in dashed style, so this fills that gap for [_DashedCaptureBox].
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter({required this.color, this.strokeWidth = 1.4, this.radius = 12, this.dashWidth = 6, this.gapWidth = 5});
+
+  final Color color;
+  final double strokeWidth;
+  final double radius;
+  final double dashWidth;
+  final double gapWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(strokeWidth / 2, strokeWidth / 2, size.width - strokeWidth, size.height - strokeWidth),
+      Radius.circular(radius),
+    );
+    final path = Path()..addRRect(rrect);
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + dashWidth;
+        canvas.drawPath(metric.extractPath(distance, next.clamp(0, metric.length)), paint);
+        distance = next + gapWidth;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth || oldDelegate.radius != radius;
 }
 
 class _VoucherStep extends StatelessWidget {

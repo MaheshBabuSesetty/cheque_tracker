@@ -80,7 +80,7 @@ class CollectionDraft extends Equatable {
   /// completion is judged directly on this being non-null.
   final String? signaturePath;
 
-  static const stepNames = ['vendor', 'representative details', 'Emirates ID', 'a signed cheque', 'consent', 'signature'];
+  static const stepNames = ['vendor', 'Emirates ID', 'representative details', 'a signed cheque', 'consent', 'signature'];
 
   bool get isMobileValid => RegExp(r'^\d{9}$').hasMatch(repMobile.replaceAll(RegExp(r'\D'), ''));
 
@@ -124,8 +124,8 @@ class CollectionDraft extends Equatable {
   /// entry flow where a rejected scan blocked this step.
   List<bool> get stepsDone => [
         vendor != null,
-        repName.trim().isNotEmpty && isMobileValid && repPhotoPath != null,
         idFrontPath != null && idBackPath != null && idScan != null,
+        repName.trim().isNotEmpty && isMobileValid && repPhotoPath != null,
         cheque != null && chequeCopyPath != null && chequeOcrStatus != ChequeOcrStatus.scanning,
         consent,
         signaturePath != null,

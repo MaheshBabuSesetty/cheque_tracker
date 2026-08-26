@@ -24,11 +24,10 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<DataResult<User>> login({required String username, required String password}) async {
-    // Deliberately no `networkInfo.isConnected` gate here: the datasource
-    // wired in today (`MockAuthRemoteDataSource`) is local-only by design,
-    // and a real remote implementation surfaces its own connectivity
-    // failures as a `ServerException`/`NetworkException` below. Gating on
-    // connectivity here would incorrectly block the mock's offline logins.
+    // Deliberately no `networkInfo.isConnected` gate here: the remote
+    // datasource already surfaces its own connectivity failures as a
+    // `ServerException`/`NetworkException` below, so an upfront check would
+    // just duplicate that without changing the outcome.
     try {
       final session = await remoteDataSource.login(username: username, password: password);
       await localDataSource.cacheSession(

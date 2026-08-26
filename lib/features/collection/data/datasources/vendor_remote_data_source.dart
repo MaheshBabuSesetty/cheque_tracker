@@ -7,8 +7,6 @@ import '../models/vendor_model.dart';
 
 /// `GET /vendors/available-for-collection` — VRM role only server-side
 /// (a non-VRM account gets a `ForbiddenException` via [ApiErrorParser]).
-/// Also implemented by `MockVendorRemoteDataSource`, wired in for debug
-/// builds while DEV is unreachable — see that class's doc comment.
 abstract class VendorRemoteDataSource {
   Future<List<Vendor>> getAvailableForCollection();
 }

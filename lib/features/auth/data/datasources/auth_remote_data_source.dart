@@ -20,10 +20,9 @@ abstract class AuthRemoteDataSource {
   Future<UserModel> getCurrentUser();
 }
 
-/// Real backend-backed implementation. Not currently wired into DI in
-/// release-by-default fashion — see `dependency_injection.dart`'s
-/// `authRemoteDataSourceProvider` doc comment for why [MockAuthRemoteDataSource]
-/// still stands in for debug builds.
+/// Real backend-backed implementation, wired into DI unconditionally (see
+/// `dependency_injection.dart`'s `authRemoteDataSourceProvider`) — every
+/// build talks to the live DEV API.
 ///
 /// Deliberately split across two [Dio] instances: [unauthenticatedDio]
 /// carries no [AuthInterceptor] and is used for login/refresh/logout, which
