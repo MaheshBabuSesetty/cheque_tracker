@@ -24,7 +24,11 @@ class DeviceImageCaptureService implements ImageCaptureService {
 
   @override
   Future<String?> captureFromCamera({required String prefix}) async {
-    final picked = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    final picked = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 85,
+      preferredCameraDevice: CameraDevice.rear,
+    );
     if (picked == null) return null;
     final bytes = await picked.readAsBytes();
     final ext = picked.path.contains('.') ? picked.path.split('.').last : 'jpg';

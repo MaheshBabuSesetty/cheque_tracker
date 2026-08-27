@@ -5,6 +5,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../cheques/domain/entities/cheque.dart';
 import '../../../cheques/presentation/providers/cheque_providers.dart';
 import '../../../../core/di/dependency_injection.dart';
+import '../../../../core/utils/phone_country_codes.dart';
 import '../../domain/entities/collection_draft.dart';
 import '../../domain/entities/collection_record.dart';
 import '../../domain/entities/vendor.dart';
@@ -45,7 +46,19 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
 
   void setRepName(String value) => state = state.copyWith(repName: value, nameFromOcr: false);
 
-  void setRepMobile(String value) => state = state.copyWith(repMobile: value);
+  /// If [value] is a full number with a country code already on it (e.g.
+  /// pasted as "+91 98765 43210"), splits it into [CollectionDraft.repMobileCountryCode]
+  /// and the local digits instead of storing the whole string as the local
+  /// number. Plain local digits (the common case — typing after the fixed
+  /// prefix chip) pass through unchanged.
+  void setRepMobile(String value) {
+    final detected = detectPhoneCountryCode(value);
+    if (detected != null) {
+      state = state.copyWith(repMobile: detected.localNumber, repMobileCountryCode: detected.countryCode);
+      return;
+    }
+    state = state.copyWith(repMobile: value);
+  }
 
   Future<void> captureRepPhoto() async {
     final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'rep-photo');

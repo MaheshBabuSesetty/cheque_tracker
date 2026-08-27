@@ -20,7 +20,7 @@ class Cheque extends Equatable {
     required this.chequeNumber,
     required this.chequeDate,
     required this.amount,
-    required this.signedBy,
+    this.signedBy,
     required this.status,
     this.reference,
     this.poNumber,
@@ -50,7 +50,10 @@ class Cheque extends Equatable {
   final String chequeNumber;
   final DateTime chequeDate;
   final double amount;
-  final String signedBy;
+
+  /// Not always present on the wire (e.g. a cheque that hasn't reached
+  /// SIGNED yet) despite otherwise being a list-shape field.
+  final String? signedBy;
 
   /// `'SIGNED'` | `'PENDING'` | `'ISSUED'` | `'CANCELLED'` — kept as the
   /// raw wire value rather than an enum since it's mostly pass-through

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/phone_country_codes.dart';
 import '../../../../core/widgets/app_primary_button.dart';
 import '../../../auth/presentation/providers/auth_notifier.dart';
 import '../../../cheques/domain/entities/cheque.dart';
@@ -412,13 +413,13 @@ class _RepresentativeStep extends StatelessWidget {
                   border: Border(right: BorderSide(color: Colors.black.withValues(alpha: 0.1))),
                   borderRadius: const BorderRadius.only(topLeft: Radius.circular(11), bottomLeft: Radius.circular(11)),
                 ),
-                child: const Text('+971', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF3A4552))),
+                child: Text(draft.repMobileCountryCode, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF3A4552))),
               ),
               Expanded(
                 child: TextField(
                   controller: repMobileController,
-                  keyboardType: TextInputType.number,
-                  onChanged: notifier.setRepMobile,
+                  keyboardType: TextInputType.phone,
+                  onChanged: (value) => _handleMobileChanged(value, notifier, repMobileController),
                   decoration: const InputDecoration(
                     hintText: '50 123 4567',
                     border: InputBorder.none,
@@ -437,13 +438,29 @@ class _RepresentativeStep extends StatelessWidget {
         ),
         if (draft.repMobile.isNotEmpty && !draft.isMobileValid) ...[
           const SizedBox(height: 6),
-          const Text(
-            'Enter a 9-digit UAE mobile number, e.g. 50 123 4567.',
-            style: TextStyle(fontSize: 10.5, color: AppColors.danger, fontWeight: FontWeight.w600),
+          Text(
+            'Enter a ${phoneCountryCodes[draft.repMobileCountryCode] ?? 9}-digit mobile number for ${draft.repMobileCountryCode}.',
+            style: const TextStyle(fontSize: 10.5, color: AppColors.danger, fontWeight: FontWeight.w600),
           ),
         ],
       ],
     );
+  }
+
+  /// Splits a pasted/typed full number (e.g. "+91 98765 43210") into its
+  /// country code and local digits — [notifier.setRepMobile] already does
+  /// this for the draft's state, but the field's own [controller] also
+  /// needs resetting to just the local part so the code isn't shown twice
+  /// (once in the fixed prefix chip, once still sitting in the text).
+  void _handleMobileChanged(String value, CollectDraftNotifier notifier, TextEditingController controller) {
+    notifier.setRepMobile(value);
+    final detected = detectPhoneCountryCode(value);
+    if (detected != null) {
+      controller.value = TextEditingValue(
+        text: detected.localNumber,
+        selection: TextSelection.collapsed(offset: detected.localNumber.length),
+      );
+    }
   }
 }
 
@@ -456,6 +473,7 @@ class _EmiratesIdStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scan = draft.idScan;
+    final frontFailed = draft.idFrontOcrFailed;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -468,10 +486,10 @@ class _EmiratesIdStep extends StatelessWidget {
           children: [
             Expanded(
               child: CaptureTile(
-                imagePath: draft.idFrontPath,
+                imagePath: frontFailed ? null : draft.idFrontPath,
                 icon: const Icon(Icons.badge_outlined, size: 24, color: AppColors.goldLink),
-                label: 'Capture front',
-                filledLabel: 'FRONT ATTACHED',
+                label: frontFailed ? 'Not detected — tap to retake' : 'Capture front',
+                filledLabel: 'FRONT READ',
                 aspectRatio: 1.58,
                 scanning: draft.isScanningId,
                 onTap: notifier.captureIdFront,
@@ -512,7 +530,40 @@ class _EmiratesIdStep extends StatelessWidget {
             ),
           ),
         ],
-        if (scan != null && !draft.isScanningId) ...[
+        if (frontFailed && !draft.isScanningId) ...[
+          const SizedBox(height: 11),
+          Container(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFDF0EF),
+              border: Border.all(color: const Color(0xFFF3CFCB)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Emirates ID not detected',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.danger),
+                ),
+                const SizedBox(height: 5),
+                const Text(
+                  'The captured image is not a readable Emirates ID front. Place the card flat, fill the frame and avoid glare, then capture again.',
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFF3A4552), height: 1.5),
+                ),
+                const SizedBox(height: 11),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: notifier.captureIdFront,
+                    child: const Text('Capture front again'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (scan != null && !draft.isScanningId && !frontFailed) ...[
           const SizedBox(height: 11),
           Container(
             padding: const EdgeInsets.all(13),

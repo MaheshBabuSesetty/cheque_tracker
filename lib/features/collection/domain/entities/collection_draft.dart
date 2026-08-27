@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import '../../../../core/utils/phone_country_codes.dart';
 import '../../../cheques/domain/entities/cheque.dart';
 import 'cheque_scan.dart';
 import 'emirates_id_scan.dart';
@@ -17,6 +18,7 @@ class CollectionDraft extends Equatable {
     this.repName = '',
     this.nameFromOcr = false,
     this.repMobile = '',
+    this.repMobileCountryCode = defaultPhoneCountryCode,
     this.repPhotoPath,
     this.idFrontPath,
     this.idBackPath,
@@ -42,6 +44,11 @@ class CollectionDraft extends Equatable {
   /// Emirates ID scan" note. Cleared the moment the agent edits the name.
   final bool nameFromOcr;
   final String repMobile;
+
+  /// E.164 calling code, e.g. "+971" — defaults to UAE but changes when
+  /// [CollectDraftNotifier.setRepMobile] detects one on a pasted/typed
+  /// full number (see [detectPhoneCountryCode]).
+  final String repMobileCountryCode;
   final String? repPhotoPath;
 
   final String? idFrontPath;
@@ -82,7 +89,11 @@ class CollectionDraft extends Equatable {
 
   static const stepNames = ['vendor', 'Emirates ID', 'representative details', 'a signed cheque', 'consent', 'signature'];
 
-  bool get isMobileValid => RegExp(r'^\d{9}$').hasMatch(repMobile.replaceAll(RegExp(r'\D'), ''));
+  bool get isMobileValid {
+    final expectedLength = phoneCountryCodes[repMobileCountryCode] ?? 9;
+    final digits = repMobile.replaceAll(RegExp(r'\D'), '');
+    return digits.length == expectedLength;
+  }
 
   /// Merges [frontIdScan] and [backIdScan] field-by-field, front winning
   /// whenever both sides read a value — the back scan only backfills
@@ -107,6 +118,12 @@ class CollectionDraft extends Equatable {
     );
   }
 
+  /// True once the front has been scanned but no ID number could be read
+  /// off it — the image likely isn't a readable Emirates ID front (glare,
+  /// crop, wrong side). Drives the "Emirates ID not detected" retry card;
+  /// never true while a scan is still in flight.
+  bool get idFrontOcrFailed => frontIdScan != null && frontIdScan!.idNumber.isEmpty;
+
   /// The on-device cheque-photo scan found a different cheque number than
   /// the one actually selected — surfaced as a non-blocking warning, since
   /// [cheque] (not the scan) is what gets submitted.
@@ -124,7 +141,12 @@ class CollectionDraft extends Equatable {
   /// entry flow where a rejected scan blocked this step.
   List<bool> get stepsDone => [
         vendor != null,
-        idFrontPath != null && idBackPath != null && idScan != null,
+        idFrontPath != null &&
+            idBackPath != null &&
+            idScan != null &&
+            idScan!.idNumber.isNotEmpty &&
+            idScan!.name.isNotEmpty &&
+            !isScanningId,
         repName.trim().isNotEmpty && isMobileValid && repPhotoPath != null,
         cheque != null && chequeCopyPath != null && chequeOcrStatus != ChequeOcrStatus.scanning,
         consent,
@@ -143,6 +165,7 @@ class CollectionDraft extends Equatable {
     String? repName,
     bool? nameFromOcr,
     String? repMobile,
+    String? repMobileCountryCode,
     String? Function()? repPhotoPath,
     String? Function()? idFrontPath,
     String? Function()? idBackPath,
@@ -163,6 +186,7 @@ class CollectionDraft extends Equatable {
       repName: repName ?? this.repName,
       nameFromOcr: nameFromOcr ?? this.nameFromOcr,
       repMobile: repMobile ?? this.repMobile,
+      repMobileCountryCode: repMobileCountryCode ?? this.repMobileCountryCode,
       repPhotoPath: repPhotoPath != null ? repPhotoPath() : this.repPhotoPath,
       idFrontPath: idFrontPath != null ? idFrontPath() : this.idFrontPath,
       idBackPath: idBackPath != null ? idBackPath() : this.idBackPath,
@@ -186,6 +210,7 @@ class CollectionDraft extends Equatable {
         repName,
         nameFromOcr,
         repMobile,
+        repMobileCountryCode,
         repPhotoPath,
         idFrontPath,
         idBackPath,

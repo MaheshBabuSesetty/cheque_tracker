@@ -40,7 +40,14 @@ class MlKitChequeOcrService implements ChequeOcrService {
   /// deliberately excludes plain integer runs, which on a cheque are far
   /// more likely to be the cheque/account/MICR number than the amount.
   static final _amountPattern = RegExp(r'\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+\.\d{2}');
-  static final _chequeNumberPattern = RegExp(r'\b\d{6}\b');
+
+  /// Cheque numbers aren't a fixed length across banks/leaves (5-8 digits
+  /// in practice) — prefer one explicitly labelled "No." on the leaf, and
+  /// only fall back to a bare digit run if no label is found. The bare
+  /// fallback excludes runs adjacent to a digit or hyphen so it doesn't
+  /// grab a segment of a longer hyphenated reference (e.g. a BPN number).
+  static final _labelledChequeNumberPattern = RegExp(r'no\.?\s*[:#]?\s*(\d{4,8})\b', caseSensitive: false);
+  static final _chequeNumberPattern = RegExp(r'(?<![\d-])\d{4,8}(?![\d-])');
 
   @override
   Future<ChequeScan> scan(String imagePath) async {
@@ -91,7 +98,8 @@ class MlKitChequeOcrService implements ChequeOcrService {
     return null;
   }
 
-  String? _detectChequeNumber(String text) => _chequeNumberPattern.firstMatch(text)?.group(0);
+  String? _detectChequeNumber(String text) =>
+      _labelledChequeNumberPattern.firstMatch(text)?.group(1) ?? _chequeNumberPattern.firstMatch(text)?.group(0);
 
   double? _detectAmount(String text) {
     final values = _amountPattern

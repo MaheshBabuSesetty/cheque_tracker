@@ -52,7 +52,7 @@ class ChequeModel extends Cheque {
       chequeNumber: json['chequeNumber'] as String,
       chequeDate: DateTime.parse(json['chequeDate'] as String),
       amount: (json['amount'] as num).toDouble(),
-      signedBy: json['signedBy'] as String,
+      signedBy: json['signedBy'] as String?,
       status: json['status'] as String,
       reference: json['reference'] as String?,
       poNumber: json['poNumber'] as String?,
