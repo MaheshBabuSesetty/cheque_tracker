@@ -74,7 +74,7 @@ class _ChequeTrackerAppState extends ConsumerState<ChequeTrackerApp> {
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
       theme: AppTheme.lightTheme,
-      //darkTheme: AppTheme.darkTheme,
+      darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
       themeAnimationDuration: const Duration(milliseconds: 320),
       themeAnimationCurve: Curves.easeInOutCubic,

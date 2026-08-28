@@ -3,7 +3,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/auth/data/datasources/auth_local_data_source.dart';
@@ -13,6 +12,7 @@ import '../../features/auth/domain/repositories/auth_repository.dart';
 import '../../features/collection/data/datasources/collection_remote_data_source.dart';
 import '../../features/collection/data/datasources/mlkit_cheque_ocr_service.dart';
 import '../../features/collection/data/datasources/mlkit_emirates_id_ocr_service.dart';
+import '../../features/collection/data/datasources/vendor_local_data_source.dart';
 import '../../features/collection/data/datasources/vendor_remote_data_source.dart';
 import '../../features/collection/data/repositories/collection_repository_impl.dart';
 import '../../features/collection/data/repositories/vendor_repository_impl.dart';
@@ -26,6 +26,7 @@ import '../../features/cheques/domain/repositories/cheque_repository.dart';
 import '../../services/analytics_service.dart';
 import '../../services/connectivity_service.dart';
 import '../../services/image_capture_service.dart';
+import '../routing/app_router.dart';
 import '../../services/notification_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/version_check_service.dart';
@@ -141,10 +142,8 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 
 // --- Collection feature wiring ------------------------------------------
 
-final imagePickerProvider = Provider<ImagePicker>((ref) => ImagePicker());
-
 final imageCaptureServiceProvider = Provider<ImageCaptureService>((ref) {
-  return DeviceImageCaptureService(ref.watch(imagePickerProvider));
+  return DeviceImageCaptureService(navigatorKey);
 });
 
 // `GET /vendors/available-for-collection` is VRM-only.
@@ -152,8 +151,12 @@ final vendorRemoteDataSourceProvider = Provider<VendorRemoteDataSource>((ref) {
   return VendorRemoteDataSourceImpl(ref.watch(dioClientProvider));
 });
 
+final vendorLocalDataSourceProvider = Provider<VendorLocalDataSource>((ref) {
+  return VendorLocalDataSourceImpl(ref.watch(sharedPreferencesProvider));
+});
+
 final vendorRepositoryProvider = Provider<VendorRepository>((ref) {
-  return VendorRepositoryImpl(ref.watch(vendorRemoteDataSourceProvider));
+  return VendorRepositoryImpl(ref.watch(vendorRemoteDataSourceProvider), ref.watch(vendorLocalDataSourceProvider));
 });
 
 // --- Cheques feature wiring ---------------------------------------------

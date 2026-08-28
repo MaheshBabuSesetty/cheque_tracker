@@ -106,22 +106,11 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     if (name.isNotEmpty) state = state.copyWith(repName: name, nameFromOcr: true);
   }
 
-  /// Picks the real, currently-SIGNED cheque this collection is for.
-  /// Clears any previously-captured cheque photo/scan — it would have been
-  /// of a different cheque.
-  void pickCheque(Cheque cheque) => state = state.copyWith(
-        cheque: () => cheque,
-        chequeCopyPath: () => null,
-        chequeOcrStatus: ChequeOcrStatus.idle,
-        chequeScan: () => null,
-      );
-
   /// Scans a photo of the physical cheque and, if the number it reads
   /// matches one of [vendor]'s currently-SIGNED cheques, picks that cheque
-  /// automatically — an alternative to browsing [ChequePickerSheet]'s list
-  /// by hand. Never fabricates a match: an unreadable photo or a number
-  /// that isn't on file both fall through to the caller to handle (e.g.
-  /// show a message and let the agent retry or fall back to the list).
+  /// automatically. Never fabricates a match: an unreadable photo or a
+  /// number that isn't on file both fall through to the caller to handle
+  /// (e.g. show a message and let the agent retry).
   ///
   /// On a match, the photo just taken to find it also becomes the cheque
   /// copy attachment — it's already a photo of the right cheque, so the

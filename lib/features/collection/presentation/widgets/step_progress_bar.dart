@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/theme_extensions.dart';
 
 /// Thin fill bar showing "N of 6 complete" on the collect screen header.
 /// Animates toward [progress] (0..1) whenever a step is completed.
@@ -15,7 +16,7 @@ class StepProgressBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       child: Container(
         height: 4,
-        color: Colors.black.withValues(alpha: 0.09),
+        color: context.semanticColors.hairline,
         alignment: Alignment.centerLeft,
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0, end: progress.clamp(0, 1)),

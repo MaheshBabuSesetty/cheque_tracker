@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_colors.dart';
+import '../theme/theme_extensions.dart';
 
 /// The label-above-input composition used throughout the login and
 /// collection screens: a small bold letter-spaced caption sitting above a
@@ -45,10 +45,10 @@ class LabeledTextField extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w700,
-            color: AppColors.textMuted,
+            color: context.semanticColors.textMuted,
             letterSpacing: 0.6,
           ),
         ),

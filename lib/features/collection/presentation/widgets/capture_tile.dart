@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/theme_extensions.dart';
 
 /// A tappable capture target for a photo (representative photo, Emirates ID
 /// front/back, cheque copy). Shows the captured image once [imagePath] is
@@ -35,9 +36,10 @@ class CaptureTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.semanticColors;
     final filled = imagePath != null;
-    final borderColor = filled ? const Color(0xFF05744F) : Colors.black.withValues(alpha: 0.2);
-    final bg = filled ? const Color(0xFFEEF8F2) : const Color(0xFFFBFAF6);
+    final borderColor = filled ? colors.successBorder : colors.dashedBorder;
+    final bg = filled ? colors.successBg : colors.placeholderBg;
     final radius = circular ? null : BorderRadius.circular(11);
 
     Widget content = DecoratedBox(
@@ -78,10 +80,10 @@ class CaptureTile extends StatelessWidget {
                       child: Text(
                         label,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textMuted,
+                          color: colors.textMuted,
                           height: 1.35,
                         ),
                       ),

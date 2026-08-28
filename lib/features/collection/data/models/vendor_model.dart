@@ -13,4 +13,9 @@ class VendorModel extends Vendor {
     code: json['code'] as String?,
     trn: json['trn'] as String?,
   );
+
+  /// For the local vendor-master cache (`VendorLocalDataSource`) — this
+  /// app never sends a vendor back to the server, so this exists purely
+  /// for round-tripping through `SharedPreferences`.
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'code': code, 'trn': trn};
 }
