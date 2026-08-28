@@ -50,3 +50,6 @@ app.*.map.json
 /android/key.properties
 *.jks
 *.keystore
+
+# Per-environment API base URLs (dev/uat/prod) — see lib/core/config/app_environment.dart.
+.env

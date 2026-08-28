@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/config/app_environment.dart';
 import 'core/constants/app_constants.dart';
 import 'core/di/dependency_injection.dart';
 import 'core/routing/app_router.dart';
@@ -22,6 +24,14 @@ import 'features/auth/presentation/providers/auth_notifier.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sharedPreferences = await SharedPreferences.getInstance();
+
+  // A release build that silently fell back to the dev API (no
+  // --dart-define-from-file=.env --dart-define=APP_ENV=... passed) is
+  // almost certainly a mistake — surface it instead of quietly shipping
+  // against dev.
+  if (kReleaseMode && AppEnvironment.isDev) {
+    debugPrint('⚠️ Release build is using the DEV API — pass --dart-define-from-file=.env --dart-define=APP_ENV=<uat|prod>.');
+  }
 
   runApp(
     ProviderScope(

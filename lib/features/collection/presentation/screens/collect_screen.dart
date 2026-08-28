@@ -107,6 +107,32 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
     super.dispose();
   }
 
+  Future<void> _confirmSubmit() async {
+    final colors = context.semanticColors;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Submit this collection?'),
+        content: Text(
+          "This sends the cheque, Emirates ID, photos and signature to the web record. You won't be able to edit it from here afterwards.",
+          style: TextStyle(fontSize: 13, color: colors.textMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('Yes, submit', style: TextStyle(color: colors.accent, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _handleSubmit();
+  }
+
   Future<void> _handleSubmit() async {
     setState(() => _submitting = true);
     final record = await ref.read(collectDraftProvider.notifier).submit();
@@ -261,7 +287,7 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
                 AppPrimaryButton(
                   label: _submitting ? 'Submitting…' : 'Submit',
                   isLoading: _submitting,
-                  onPressed: ready && !_submitting ? _handleSubmit : null,
+                  onPressed: ready && !_submitting ? _confirmSubmit : null,
                   backgroundColor: AppColors.gold,
                   foregroundColor: Colors.black,
                 ),
