@@ -25,14 +25,33 @@ class AuthNotifier extends _$AuthNotifier {
     return user;
   }
 
-  Future<void> login({required String username, required String password}) async {
+  Future<void> login({
+    required String username,
+    required String password,
+    required bool rememberDevice,
+  }) async {
     state = const AsyncLoading();
-    final result = await ref.read(loginUserProvider)(username: username, password: password);
+    final result = await ref
+        .read(loginUserProvider)(username: username, password: password, rememberDevice: rememberDevice);
     state = switch (result) {
       ResultSuccess(:final data) => AsyncData(data),
       ResultError(:final failure) => AsyncError(failure, StackTrace.current),
     };
     if (result is ResultSuccess<User>) unawaited(_syncVendorsIfVrm(result.data));
+  }
+
+  /// Same shape as [login], but a `null`-data success (the agent cancelled
+  /// the Microsoft sign-in UI) restores the previous signed-out state
+  /// instead of surfacing an error snackbar — see [AuthRepository.
+  /// loginWithSso]'s doc comment.
+  Future<void> loginWithSso({required bool rememberDevice}) async {
+    state = const AsyncLoading();
+    final result = await ref.read(loginWithSsoProvider)(rememberDevice: rememberDevice);
+    state = switch (result) {
+      ResultSuccess(:final data) => AsyncData(data),
+      ResultError(:final failure) => AsyncError(failure, StackTrace.current),
+    };
+    if (result is ResultSuccess<User?>) unawaited(_syncVendorsIfVrm(result.data));
   }
 
   /// Refreshes the on-device vendor-master cache right after a fresh login

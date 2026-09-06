@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/network/api_error_parser.dart';
@@ -28,16 +27,19 @@ class CollectionRemoteDataSourceImpl implements CollectionRemoteDataSource {
     final cheque = draft.cheque!;
     final idScan = draft.idScan;
 
-    final fields = <MapEntry<String, String>>[MapEntry('CollectorName', draft.repName.trim())];
+    // Nationality/expiry are no longer read from OCR, but the API still
+    // expects both field keys on every submission — sent empty rather than
+    // omitted so a required-field validation on the server side doesn't
+    // reject the request.
+    final fields = <MapEntry<String, String>>[
+      MapEntry('CollectorName', draft.repName.trim()),
+      const MapEntry('CollectorNationality', ''),
+      const MapEntry('CollectorEidExpiryDate', ''),
+    ];
 
     final mobileDigits = draft.repMobile.replaceAll(RegExp(r'\D'), '');
     if (mobileDigits.isNotEmpty) fields.add(MapEntry('CollectorMobile', '+971 $mobileDigits'));
     if (idScan != null && idScan.idNumber.isNotEmpty) fields.add(MapEntry('CollectorEmiratesId', idScan.idNumber));
-    if (idScan != null && idScan.nationality.isNotEmpty) {
-      fields.add(MapEntry('CollectorNationality', idScan.nationality));
-    }
-    final isoExpiry = idScan != null ? _isoExpiryOrNull(idScan.expiry) : null;
-    if (isoExpiry != null) fields.add(MapEntry('CollectorEidExpiryDate', isoExpiry));
 
     // `SupportingDocuments` must be repeated under the identical field name
     // for each file, not `SupportingDocuments[0]`/`[1]` — `FormData.files`
@@ -100,23 +102,5 @@ class CollectionRemoteDataSourceImpl implements CollectionRemoteDataSource {
       _ => MediaType('image', 'jpeg'),
     };
     return MultipartFile.fromFileSync(path, contentType: mediaType);
-  }
-
-  /// The on-device Emirates ID OCR produces a display string ("14 Mar
-  /// 2029", or "14/3/2029" as its own fallback) — never the ISO
-  /// `yyyy-MM-dd` the API requires. Returns `null` (field omitted, rather
-  /// than sent unparseable and 400ing the whole submission) if neither
-  /// format matches.
-  String? _isoExpiryOrNull(String expiry) {
-    if (expiry.isEmpty) return null;
-    for (final pattern in ['dd MMM yyyy', 'd/M/yyyy']) {
-      try {
-        final parsed = DateFormat(pattern).parseStrict(expiry);
-        return DateFormat('yyyy-MM-dd').format(parsed);
-      } catch (_) {
-        continue;
-      }
-    }
-    return null;
   }
 }

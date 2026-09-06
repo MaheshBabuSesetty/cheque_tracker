@@ -23,6 +23,7 @@ class InAppCameraScreen extends StatefulWidget {
     this.aspectRatio = 4 / 3,
     this.shape = CameraFrameShape.rect,
     this.initialLens = CameraLensDirection.back,
+    this.fillHeight = false,
   });
 
   final String title;
@@ -33,6 +34,13 @@ class InAppCameraScreen extends StatefulWidget {
   /// Which lens to open with — the flip button (when both exist) still
   /// lets the agent switch either way after that.
   final CameraLensDirection initialLens;
+
+  /// When true, the frame's height fills the available vertical space
+  /// between the top bar and the guidance text instead of being derived
+  /// from [aspectRatio] — for documents like a cheque, whose true aspect
+  /// ratio would otherwise leave a small landscape box floating in a lot
+  /// of empty screen. [aspectRatio] still governs the frame's width cap.
+  final bool fillHeight;
 
   /// Pushes the screen via the app's global [navKey] (rather than requiring
   /// a `BuildContext`) so context-free services/notifiers can launch it —
@@ -46,10 +54,18 @@ class InAppCameraScreen extends StatefulWidget {
     double aspectRatio = 4 / 3,
     CameraFrameShape shape = CameraFrameShape.rect,
     CameraLensDirection initialLens = CameraLensDirection.back,
+    bool fillHeight = false,
   }) {
     return navKey.currentState!.push<XFile?>(
       AppPageRoute(
-        page: InAppCameraScreen(title: title, guidance: guidance, aspectRatio: aspectRatio, shape: shape, initialLens: initialLens),
+        page: InAppCameraScreen(
+          title: title,
+          guidance: guidance,
+          aspectRatio: aspectRatio,
+          shape: shape,
+          initialLens: initialLens,
+          fillHeight: fillHeight,
+        ),
         transitionType: TransitionType.slide,
       ),
     );
@@ -172,18 +188,29 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> with WidgetsBindi
               onFlip: _switchCamera,
             ),
             Expanded(
-              child: Center(
-                child: FutureBuilder<void>(
-                  future: _initializeFuture,
-                  builder: (context, snapshot) {
-                    if (_error != null) return _ErrorState(message: _error!);
-                    final controller = _controller;
-                    if (controller == null || !controller.value.isInitialized) {
-                      return const CircularProgressIndicator(color: AppColors.gold);
-                    }
-                    return _Viewfinder(controller: controller, aspectRatio: widget.aspectRatio, shape: widget.shape, guidance: widget.guidance);
-                  },
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Center(
+                    child: FutureBuilder<void>(
+                      future: _initializeFuture,
+                      builder: (context, snapshot) {
+                        if (_error != null) return _ErrorState(message: _error!);
+                        final controller = _controller;
+                        if (controller == null || !controller.value.isInitialized) {
+                          return const CircularProgressIndicator(color: AppColors.gold);
+                        }
+                        return _Viewfinder(
+                          controller: controller,
+                          aspectRatio: widget.aspectRatio,
+                          shape: widget.shape,
+                          guidance: widget.guidance,
+                          fillHeight: widget.fillHeight,
+                          availableHeight: constraints.maxHeight,
+                        );
+                      },
+                    ),
+                  );
+                },
               ),
             ),
             _ShutterBar(capturing: _capturing, enabled: _controller != null, onCapture: _capture),
@@ -238,12 +265,26 @@ class _TopBar extends StatelessWidget {
 }
 
 class _Viewfinder extends StatelessWidget {
-  const _Viewfinder({required this.controller, required this.aspectRatio, required this.shape, required this.guidance});
+  const _Viewfinder({
+    required this.controller,
+    required this.aspectRatio,
+    required this.shape,
+    required this.guidance,
+    this.fillHeight = false,
+    this.availableHeight,
+  });
 
   final CameraController controller;
   final double aspectRatio;
   final CameraFrameShape shape;
   final String guidance;
+
+  /// See [InAppCameraScreen.fillHeight].
+  final bool fillHeight;
+
+  /// The height available to this widget (from the enclosing `Expanded`),
+  /// used only when [fillHeight] is true.
+  final double? availableHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -252,7 +293,17 @@ class _Viewfinder extends StatelessWidget {
     // viewfinder up to an enormous frame — 85% still governs phone-sized
     // screens, this only kicks in once that would exceed a sensible size.
     final frameWidth = (screenWidth * 0.85).clamp(0, 420).toDouble();
-    final frameHeight = shape == CameraFrameShape.circle ? frameWidth : frameWidth / aspectRatio;
+    var frameHeight = shape == CameraFrameShape.circle ? frameWidth : frameWidth / aspectRatio;
+
+    final maxHeight = availableHeight;
+    if (fillHeight && shape != CameraFrameShape.circle && maxHeight != null) {
+      // Reserve room below the frame for its 18px gap plus the two-line
+      // guidance text, then let the frame claim the rest of the available
+      // height — capped so it never shrinks below its aspect-ratio height.
+      const reservedForGuidance = 76.0;
+      final fitted = maxHeight - reservedForGuidance;
+      if (fitted > frameHeight) frameHeight = fitted;
+    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,

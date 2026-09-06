@@ -6,5 +6,6 @@ class ScanCheque {
 
   final ChequeOcrService _service;
 
-  Future<ChequeScan> call(String imagePath) => _service.scan(imagePath);
+  Future<ChequeScan> call(String imagePath, {String? expectedPayeeName}) =>
+      _service.scan(imagePath, expectedPayeeName: expectedPayeeName);
 }

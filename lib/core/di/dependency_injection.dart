@@ -5,10 +5,14 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_appauth/flutter_appauth.dart';
+
 import '../../features/auth/data/datasources/auth_local_data_source.dart';
 import '../../features/auth/data/datasources/auth_remote_data_source.dart';
+import '../../features/auth/data/datasources/azure_ad_sso_data_source.dart';
 import '../../features/auth/data/repositories/auth_repository_impl.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
+import '../../features/auth/domain/repositories/sso_auth_service.dart';
 import '../../features/collection/data/datasources/collection_remote_data_source.dart';
 import '../../features/collection/data/datasources/mlkit_cheque_ocr_service.dart';
 import '../../features/collection/data/datasources/mlkit_emirates_id_ocr_service.dart';
@@ -132,11 +136,18 @@ final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
   return AuthLocalDataSourceImpl(ref.watch(storageServiceProvider));
 });
 
+final flutterAppAuthProvider = Provider<FlutterAppAuth>((ref) => const FlutterAppAuth());
+
+final ssoAuthServiceProvider = Provider<SsoAuthService>((ref) {
+  return AzureAdSsoService(ref.watch(flutterAppAuthProvider));
+});
+
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepositoryImpl(
     remoteDataSource: ref.watch(authRemoteDataSourceProvider),
     localDataSource: ref.watch(authLocalDataSourceProvider),
     networkInfo: ref.watch(networkInfoProvider),
+    ssoAuthService: ref.watch(ssoAuthServiceProvider),
   );
 });
 

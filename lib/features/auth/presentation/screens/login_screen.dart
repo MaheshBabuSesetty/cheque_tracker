@@ -29,6 +29,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  // ignore: prefer_final_fields
+  bool _rememberDevice = true;
 
   @override
   void dispose() {
@@ -44,7 +46,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         .login(
           username: _usernameController.text.trim(),
           password: _passwordController.text,
+          rememberDevice: _rememberDevice,
         );
+  }
+
+  // ignore: unused_element
+  void _submitSso() {
+    ref.read(authProvider.notifier).loginWithSso(rememberDevice: _rememberDevice);
   }
 
   @override
@@ -152,7 +160,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 LabeledTextField(
                                   label: 'USERNAME',
                                   controller: _usernameController,
-                                  hintText: 'agent.rashid',
+                                  hintText: 'e.g. agent.smith',
                                   validator: (v) => Validators.notEmpty(
                                     v,
                                     fieldName: 'Username',
@@ -190,7 +198,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     ),
                                   ),
                                 ],
-                                const SizedBox(height: 20),
+                                // "Remember this device" checkbox disabled — commented out
+                                // for reuse later. _rememberDevice stays true by default.
+                                // const SizedBox(height: 10),
+                                // InkWell(
+                                //   onTap: () => setState(
+                                //     () => _rememberDevice = !_rememberDevice,
+                                //   ),
+                                //   borderRadius: BorderRadius.circular(6),
+                                //   child: Padding(
+                                //     padding: const EdgeInsets.symmetric(vertical: 4),
+                                //     child: Row(
+                                //       mainAxisSize: MainAxisSize.min,
+                                //       children: [
+                                //         SizedBox(
+                                //           width: 20,
+                                //           height: 20,
+                                //           child: Checkbox(
+                                //             value: _rememberDevice,
+                                //             onChanged: (value) => setState(
+                                //               () => _rememberDevice = value ?? true,
+                                //             ),
+                                //             visualDensity: VisualDensity.compact,
+                                //             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                //             activeColor: AppColors.gold,
+                                //           ),
+                                //         ),
+                                //         const SizedBox(width: 8),
+                                //         Text(
+                                //           'Remember this device',
+                                //           style: TextStyle(
+                                //             fontSize: 12,
+                                //             color: colors.textMuted,
+                                //           ),
+                                //         ),
+                                //       ],
+                                //     ),
+                                //   ),
+                                // ),
+                                const SizedBox(height: 10),
                                 AppPrimaryButton(
                                   label: 'Sign in',
                                   isLoading: isLoading,
@@ -198,6 +244,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   backgroundColor: AppColors.gold,
                                   foregroundColor: Colors.black,
                                 ),
+                                // SSO sign-in disabled — commented out for reuse later.
+                                // const SizedBox(height: 18),
+                                // Row(
+                                //   children: [
+                                //     Expanded(child: Divider(color: colors.hairline)),
+                                //     Padding(
+                                //       padding: const EdgeInsets.symmetric(horizontal: 10),
+                                //       child: Text(
+                                //         'OR',
+                                //         style: TextStyle(
+                                //           fontSize: 10.5,
+                                //           fontWeight: FontWeight.w700,
+                                //           letterSpacing: 0.6,
+                                //           color: colors.textFaint,
+                                //         ),
+                                //       ),
+                                //     ),
+                                //     Expanded(child: Divider(color: colors.hairline)),
+                                //   ],
+                                // ),
+                                // const SizedBox(height: 18),
+                                // _MicrosoftSignInButton(
+                                //   isLoading: isLoading,
+                                //   onPressed: _submitSso,
+                                // ),
                               ],
                             ),
                           ),
@@ -219,12 +290,97 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
+/// "Sign in with Microsoft" — the light/outlined button style Microsoft's
+/// own branding guidelines specify, deliberately distinct from the gold
+/// primary button so it reads as an alternate path, not a second primary
+/// CTA. The four-square mark is drawn directly (official brand colors,
+/// no asset/font needed) rather than fetched or rasterized.
+// ignore: unused_element
+class _MicrosoftSignInButton extends StatelessWidget {
+  const _MicrosoftSignInButton({required this.isLoading, required this.onPressed});
+
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: OutlinedButton(
+        onPressed: isLoading ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: Colors.white,
+          disabledBackgroundColor: Colors.white.withValues(alpha: 0.6),
+          side: BorderSide(color: colors.surfaceBorder),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.black54),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const _MicrosoftLogo(),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Sign in with Microsoft',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black.withValues(alpha: 0.82),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// Microsoft's four-square mark, official brand colors.
+class _MicrosoftLogo extends StatelessWidget {
+  const _MicrosoftLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    const gap = 2.0;
+    const squareSize = 9.0;
+    Widget square(Color color) => Container(width: squareSize, height: squareSize, color: color);
+
+    return SizedBox(
+      width: squareSize * 2 + gap,
+      height: squareSize * 2 + gap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [square(const Color(0xFFF25022)), const SizedBox(width: gap), square(const Color(0xFF7FBA00))],
+          ),
+          const SizedBox(height: gap),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [square(const Color(0xFF00A4EF)), const SizedBox(width: gap), square(const Color(0xFFFFB900))],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _VersionFooter extends ConsumerWidget {
   const _VersionFooter();
 
   Future<void> _showUpdateSheet(BuildContext context, AppVersionStatus status) {
     return showModalBottomSheet<void>(
       context: context,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => Container(
         decoration: BoxDecoration(
@@ -236,11 +392,22 @@ class _VersionFooter extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Update available',
-              style: Theme.of(
-                sheetContext,
-              ).textTheme.titleLarge?.copyWith(fontSize: 17.5),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Update available',
+                    style: Theme.of(
+                      sheetContext,
+                    ).textTheme.titleLarge?.copyWith(fontSize: 17.5),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Later',
+                  icon: Icon(Icons.close, size: 20, color: sheetContext.semanticColors.textMuted),
+                  onPressed: () => Navigator.of(sheetContext).pop(),
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             Text(

@@ -10,7 +10,11 @@ class LoginUser {
 
   final AuthRepository _repository;
 
-  Future<DataResult<User>> call({required String username, required String password}) {
-    return _repository.login(username: username, password: password);
+  Future<DataResult<User>> call({
+    required String username,
+    required String password,
+    required bool rememberDevice,
+  }) {
+    return _repository.login(username: username, password: password, rememberDevice: rememberDevice);
   }
 }

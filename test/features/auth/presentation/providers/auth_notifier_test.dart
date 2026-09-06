@@ -34,13 +34,19 @@ void main() {
     await container.read(authProvider.future);
 
     when(
-      () => repository.login(username: any(named: 'username'), password: any(named: 'password')),
+      () => repository.login(
+        username: any(named: 'username'),
+        password: any(named: 'password'),
+        rememberDevice: any(named: 'rememberDevice'),
+      ),
     ).thenAnswer((_) async => const ResultSuccess(user));
 
     final states = <AsyncValue<User?>>[];
     container.listen(authProvider, (previous, next) => states.add(next));
 
-    await container.read(authProvider.notifier).login(username: 'agent.rashid', password: 'agent123');
+    await container
+        .read(authProvider.notifier)
+        .login(username: 'agent.rashid', password: 'agent123', rememberDevice: true);
 
     expect(states.any((s) => s.isLoading), isTrue);
     expect(states.last, const AsyncData<User?>(user));
@@ -50,10 +56,16 @@ void main() {
     await container.read(authProvider.future);
 
     when(
-      () => repository.login(username: any(named: 'username'), password: any(named: 'password')),
+      () => repository.login(
+        username: any(named: 'username'),
+        password: any(named: 'password'),
+        rememberDevice: any(named: 'rememberDevice'),
+      ),
     ).thenAnswer((_) async => const ResultError(AuthFailure()));
 
-    await container.read(authProvider.notifier).login(username: 'agent.rashid', password: 'wrong');
+    await container
+        .read(authProvider.notifier)
+        .login(username: 'agent.rashid', password: 'wrong', rememberDevice: true);
 
     final state = container.read(authProvider);
     expect(state.hasError, isTrue);

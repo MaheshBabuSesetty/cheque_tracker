@@ -24,8 +24,6 @@ class CollectionRecord extends Equatable {
     this.currency = 'AED',
     this.repMobile = '',
     this.emiratesId = '',
-    this.nationality = '',
-    this.expiry = '',
     this.collectorPhotoUrl,
     this.idFrontUrl,
     this.idBackUrl,
@@ -49,11 +47,6 @@ class CollectionRecord extends Equatable {
   final String repName;
   final String repMobile;
   final String emiratesId;
-  final String nationality;
-
-  /// ISO `yyyy-MM-dd`, or `''` if not captured.
-  final String expiry;
-
   final String? collectorPhotoUrl;
   final String? idFrontUrl;
   final String? idBackUrl;
@@ -79,8 +72,6 @@ class CollectionRecord extends Equatable {
         repName,
         repMobile,
         emiratesId,
-        nationality,
-        expiry,
         collectorPhotoUrl,
         idFrontUrl,
         idBackUrl,

@@ -32,6 +32,15 @@ abstract class StorageService {
   Future<String?> getThemeMode();
   Future<void> saveThemeMode(String mode);
 
+  /// Whether the agent opted in to "Remember this device" at their last
+  /// login — `null` if they've never logged in on this install (or logged
+  /// in before this preference existed). Read back once at app cold start
+  /// ([AuthRepositoryImpl.getCurrentUser]) to decide whether the persisted
+  /// session should still be honored or wiped, forcing a fresh sign-in.
+  Future<bool?> getRememberDevice();
+  Future<void> saveRememberDevice(bool remember);
+  Future<void> clearRememberDevice();
+
   Future<String?> getCachedUserJson();
   Future<void> saveCachedUserJson(String json);
   Future<void> clearCachedUserJson();
@@ -54,6 +63,7 @@ class SecureStorageService implements StorageService {
   static const _refreshTokenExpiryKey = 'refresh_token_expires_at_utc';
   static const _themeModeKey = 'theme_mode';
   static const _cachedUserKey = 'cached_user';
+  static const _rememberDeviceKey = 'remember_device';
 
   @override
   Future<String?> getAuthToken() => _secureStorage.read(key: _authTokenKey);
@@ -106,6 +116,19 @@ class SecureStorageService implements StorageService {
   @override
   Future<void> saveThemeMode(String mode) async {
     await _prefs.setString(_themeModeKey, mode);
+  }
+
+  @override
+  Future<bool?> getRememberDevice() async => _prefs.getBool(_rememberDeviceKey);
+
+  @override
+  Future<void> saveRememberDevice(bool remember) async {
+    await _prefs.setBool(_rememberDeviceKey, remember);
+  }
+
+  @override
+  Future<void> clearRememberDevice() async {
+    await _prefs.remove(_rememberDeviceKey);
   }
 
   @override

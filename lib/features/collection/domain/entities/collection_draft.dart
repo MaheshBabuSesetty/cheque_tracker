@@ -6,8 +6,6 @@ import 'cheque_scan.dart';
 import 'emirates_id_scan.dart';
 import 'vendor.dart';
 
-enum ChequeOcrStatus { idle, scanning, done, rejected }
-
 /// In-progress state for the 6-step "New collection" form. Immutable value
 /// object (copied via [copyWith]) so the step-completion logic below is
 /// pure and unit-testable without touching Riverpod or widgets — the
@@ -27,7 +25,7 @@ class CollectionDraft extends Equatable {
     this.isScanningId = false,
     this.cheque,
     this.chequeCopyPath,
-    this.chequeOcrStatus = ChequeOcrStatus.idle,
+    this.isScanningChequeCopy = false,
     this.chequeScan,
     this.voucherPath,
     this.supportingDocPaths = const [],
@@ -69,10 +67,14 @@ class CollectionDraft extends Equatable {
   final Cheque? cheque;
   final String? chequeCopyPath;
 
-  /// The on-device OCR read of [chequeCopyPath] is a non-blocking sanity
-  /// check only (does the photographed cheque look like [cheque]?) — it
-  /// never gates [stepsDone], unlike the old free-typed-entry flow.
-  final ChequeOcrStatus chequeOcrStatus;
+  /// True only while the just-captured/recaptured [chequeCopyPath] photo is
+  /// being OCR'd — used only to block [stepsDone] mid-scan, never surfaced
+  /// as a rejection.
+  final bool isScanningChequeCopy;
+
+  /// The on-device OCR read of [chequeCopyPath], checked against [cheque]'s
+  /// payee name — a non-blocking sanity check ("did you photograph the
+  /// right cheque?"), never [stepsDone]-gating. See [chequeScanWarnings].
   final ChequeScan? chequeScan;
 
   /// Both fully optional — step 5 ("Voucher & documents") never appears in
@@ -106,15 +108,13 @@ class CollectionDraft extends Equatable {
     String pick(String? a, String? b) => (a != null && a.isNotEmpty) ? a : (b ?? '');
     final idNumber = pick(front?.idNumber, back?.idNumber);
     final name = pick(front?.name, back?.name);
-    final nationality = pick(front?.nationality, back?.nationality);
-    final expiry = pick(front?.expiry, back?.expiry);
-    final fieldsFound = [idNumber, name, nationality, expiry].where((f) => f.isNotEmpty).length;
+    final nationality = front?.nationality ?? back?.nationality;
+    final fieldsFound = [idNumber, name].where((f) => f.isNotEmpty).length;
     return EmiratesIdScan(
       idNumber: idNumber,
       name: name,
       nationality: nationality,
-      expiry: expiry,
-      confidence: '${(fieldsFound / 4 * 100).round()}%',
+      confidence: '${(fieldsFound / 2 * 100).round()}%',
     );
   }
 
@@ -124,21 +124,25 @@ class CollectionDraft extends Equatable {
   /// never true while a scan is still in flight.
   bool get idFrontOcrFailed => frontIdScan != null && frontIdScan!.idNumber.isEmpty;
 
-  /// The on-device cheque-photo scan found a different cheque number than
-  /// the one actually selected — surfaced as a non-blocking warning, since
-  /// [cheque] (not the scan) is what gets submitted.
-  bool get chequeNumberMismatch {
-    final scanned = chequeScan?.chequeNumber;
-    return cheque != null && scanned != null && scanned.isNotEmpty && scanned != cheque!.chequeNumber;
-  }
-
   double get amountValue => cheque?.amount ?? 0;
+
+  /// Non-blocking sanity warning from [chequeScan] against the actually
+  /// selected [cheque]'s vendor — [cheque] (not the scan) is what gets
+  /// submitted, so this never gates [stepsDone]; it's surfaced only so the
+  /// agent can catch photographing the wrong cheque.
+  List<String> get chequeScanWarnings {
+    final scan = chequeScan;
+    if (scan == null || cheque == null) return [];
+    return [
+      if (scan.nameMatched == false)
+        "Couldn't find this vendor's name on the photographed cheque.",
+    ];
+  }
 
   /// One flag per numbered step on the collect screen, in display order.
   /// Step 4 ("Cheque") requires both picking a real SIGNED cheque and
-  /// capturing its photo — the on-device OCR read is a non-blocking sanity
-  /// check only (see [chequeNumberMismatch]), unlike the old free-typed-
-  /// entry flow where a rejected scan blocked this step.
+  /// capturing its photo — the OCR check behind [chequeScanWarnings] is a
+  /// non-blocking sanity check only, unlike [isScanningChequeCopy].
   List<bool> get stepsDone => [
         vendor != null,
         idFrontPath != null &&
@@ -148,7 +152,7 @@ class CollectionDraft extends Equatable {
             idScan!.name.isNotEmpty &&
             !isScanningId,
         repName.trim().isNotEmpty && isMobileValid && repPhotoPath != null,
-        cheque != null && chequeCopyPath != null && chequeOcrStatus != ChequeOcrStatus.scanning,
+        cheque != null && chequeCopyPath != null && !isScanningChequeCopy,
         consent,
         signaturePath != null,
       ];
@@ -174,7 +178,7 @@ class CollectionDraft extends Equatable {
     bool? isScanningId,
     Cheque? Function()? cheque,
     String? Function()? chequeCopyPath,
-    ChequeOcrStatus? chequeOcrStatus,
+    bool? isScanningChequeCopy,
     ChequeScan? Function()? chequeScan,
     String? Function()? voucherPath,
     List<String>? supportingDocPaths,
@@ -195,7 +199,7 @@ class CollectionDraft extends Equatable {
       isScanningId: isScanningId ?? this.isScanningId,
       cheque: cheque != null ? cheque() : this.cheque,
       chequeCopyPath: chequeCopyPath != null ? chequeCopyPath() : this.chequeCopyPath,
-      chequeOcrStatus: chequeOcrStatus ?? this.chequeOcrStatus,
+      isScanningChequeCopy: isScanningChequeCopy ?? this.isScanningChequeCopy,
       chequeScan: chequeScan != null ? chequeScan() : this.chequeScan,
       voucherPath: voucherPath != null ? voucherPath() : this.voucherPath,
       supportingDocPaths: supportingDocPaths ?? this.supportingDocPaths,
@@ -219,7 +223,7 @@ class CollectionDraft extends Equatable {
         isScanningId,
         cheque,
         chequeCopyPath,
-        chequeOcrStatus,
+        isScanningChequeCopy,
         chequeScan,
         voucherPath,
         supportingDocPaths,

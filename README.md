@@ -7,7 +7,7 @@ A Flutter app scaffolded with **Clean Architecture**, **SOLID principles**, and 
 ```
 lib/
 ├── core/                    # Cross-cutting, feature-agnostic code
-│   ├── constants/           # App-wide constants (names, timeouts, API paths, demo creds)
+│   ├── constants/           # App-wide constants (names, timeouts, API paths)
 │   ├── di/                  # Composition root: every provider lives here
 │   ├── error/                # Failure (domain-facing) / Exception (data-facing) types
 │   ├── network/               # Dio client, connectivity check, interceptors
@@ -19,7 +19,7 @@ lib/
 ├── features/
 │   ├── auth/                    # Sign-in with a field agent ID + password
 │   │   ├── data/
-│   │   │   ├── datasources/     # AuthRemoteDataSource (Dio, unused for now) + MockAuthRemoteDataSource (wired in)
+│   │   │   ├── datasources/     # AuthRemoteDataSource (Dio, live), AzureAdSsoService (Entra ID OIDC)
 │   │   │   ├── models/           # UserModel (extends User, JSON), LoginRequestDto (freezed)
 │   │   │   └── repositories/     # AuthRepositoryImpl — the only class that sees both sides
 │   │   ├── domain/
@@ -76,6 +76,10 @@ Note: riverpod_generator names the provider for a class by stripping a trailing 
 
 `core/routing/app_router.dart` exposes a single `onGenerateRoute` wired into `MaterialApp`, plus a global `navigatorKey`. `core/routing/page_transitions.dart` provides `AppPageRoute`, a `PageRouteBuilder` with fade/slide/scale transitions. The auth-guard redirect lives in `SplashScreen`, which awaits the initial `authProvider` resolution before routing to `login` or `home` (`MainShellScreen`). Inside the shell, the Collect/Transactions tabs are an `IndexedStack` driven by a plain `int` notifier (`mainTabIndexProvider`) rather than a nested `Navigator` — neither tab needs its own back stack; drilling into a transaction still goes through a named route (`RouteNames.collectionDetail`, record id passed via `settings.arguments`).
 
+### Remember this device
+
+The "Remember this device" checkbox on `LoginScreen` (default checked) is opt-in persistence, not the only way the session survives at all: `AuthRepositoryImpl.login`/`loginWithSso` always cache the session (every authenticated request reads its token straight from `StorageService`, so the app couldn't function this run without it) and separately persist the checkbox's value via `StorageService.saveRememberDevice`. The decision only bites at the *next* cold start — `AuthRepositoryImpl.getCurrentUser()` (called once per process, from `AuthNotifier.build()`) wipes the cached session and forces the login screen if the stored flag is `false`. A `null` flag (pre-upgrade installs, or a device that's never logged in) is left alone rather than treated as "don't remember."
+
 ### Theming
 
 `core/theme/app_theme.dart` builds Material 3 `light`/`dark` `ThemeData` from the brand palette (`AppColors`: ink/gold/cream), with a shared `inputDecorationTheme` so every text field gets the same rounded/filled look. Typography pairs Playfair Display (headings/wordmark) with Poppins (body/UI) via `google_fonts`. `themeMode` is a persisted `@riverpod` notifier (`appThemeModeProvider`); `MaterialApp.themeAnimationDuration/Curve` animates the switch. The splash/login screens are intentionally always black/gold/cream regardless of theme mode — that's brand, not a "dark mode".
@@ -88,7 +92,8 @@ Riverpod itself is the DI mechanism. `core/di/dependency_injection.dart` is the 
 
 There's no live backend yet, so a few things are intentionally simulated behind their real interfaces:
 
-- **Auth** — `MockAuthRemoteDataSource` accepts the demo credentials (`AppConstants.demoAgentId` / `demoAgentPassword`, shown on the login screen's "Use demo agent" link). The real Dio-backed `AuthRemoteDataSourceImpl` already exists; swapping it in is a one-line change in `dependency_injection.dart`.
+- **Auth (password)** — live: `AuthRemoteDataSourceImpl` hits the real `POST /auth/login` on the DEV API.
+- **Auth (SSO)** — client-side only: `AzureAdSsoService` runs a real Microsoft Entra ID OIDC sign-in (via `flutter_appauth`) and hands the resulting id token to `POST /auth/sso`, but **that endpoint doesn't exist on the backend yet** — see `AuthRemoteDataSource.loginWithSso`'s doc comment for the expected request/response contract. Until then, and until IT/identity registers a real app registration (`.env`'s `AZURE_AD_*` keys are placeholders — see "SSO (Microsoft Entra ID) setup" below), the "Sign in with Microsoft" button will fail at the token-exchange step.
 - **Emirates ID OCR** — `MockEmiratesIdOcrService` simulates scan latency and returns plausible fields. Swap in a real OCR provider behind `EmiratesIdOcrService` the same way.
 - **Cheque OCR** — `MockChequeOcrService` simulates scanning a captured cheque copy: it detects a currency (55% AED, 35% USD, 10% something else) and, for AED/USD, a drawee bank, cheque number and amount. Anything other than AED/USD is rejected (`ChequeScan.accepted == false`) — `CollectDraftNotifier` clears the cheque number/amount and blocks step 4 until the agent recaptures. Swap in a real cheque-OCR provider behind `ChequeOcrService` the same way.
 - **Collections storage** — `CollectionLocalDataSource` persists locally via `SharedPreferences` only; there is no "push to the web application tracker" network call yet. A real sync step would sit behind `CollectionRepository.submit` without any presentation/domain changes.
@@ -108,11 +113,59 @@ There's no live backend yet, so a few things are intentionally simulated behind 
 ```bash
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs   # regenerate *.g.dart / *.freezed.dart after model/provider changes
-flutter run
+flutter run --dart-define-from-file=.env --dart-define=APP_ENV=dev   # or uat / prod
 flutter test
 ```
 
-Camera capture (representative photo, Emirates ID front/back, cheque copy) uses `image_picker`, which needs a real device or a simulator that supports the camera intent — `NSCameraUsageDescription`/`NSPhotoLibraryUsageDescription` are already set in `ios/Runner/Info.plist`, and `android.permission.CAMERA` in the Android manifest.
+Environment config (API base URLs for dev/uat/prod) lives in `.env` and is picked at build/run time via `--dart-define=APP_ENV=<dev|uat|prod>` (defaults to `dev` if omitted). Only the `dev` host is confirmed live — see the comments in `.env` before relying on `uat`/`prod`.
+
+Camera capture (representative photo, Emirates ID front/back, cheque copy, voucher, supporting documents) uses an in-app camera screen (`core/widgets/camera/in_app_camera_screen.dart`, via the `camera` package), which needs a real device or a simulator that supports it — `NSCameraUsageDescription`/`NSPhotoLibraryUsageDescription` are already set in `ios/Runner/Info.plist`, and `android.permission.CAMERA` in the Android manifest.
+
+### SSO (Microsoft Entra ID) setup
+
+The login screen's "Sign in with Microsoft" button (`LoginScreen`/`AuthNotifier.loginWithSso`) is fully wired end-to-end on the client, but needs two things from outside this repo before it actually works:
+
+1. **An Entra ID app registration** (single-tenant, native/public client) with a **"Mobile and desktop applications" platform** redirect URI of:
+   ```
+   com.latinem.cheque_tracker://oauthredirect
+   ```
+   Then fill in the real values in `.env`, replacing the `REPLACE_WITH_*` placeholders:
+   ```
+   AZURE_AD_TENANT_ID=<tenant id>
+   AZURE_AD_CLIENT_ID=<client id>
+   ```
+   (`AZURE_AD_REDIRECT_URI` only needs to change if the app's bundle ID / applicationId ever changes — it's derived from `com.latinem.cheque_tracker`, already wired into `android/app/build.gradle.kts`'s `appAuthRedirectScheme` placeholder and `ios/Runner/Info.plist`'s `CFBundleURLTypes`.)
+2. **A backend `POST /auth/sso` endpoint** that accepts `{ idToken, provider }`, verifies the token against Entra ID's public keys/issuer, and returns the same session shape `POST /auth/login` does. See `AuthRemoteDataSource.loginWithSso`'s doc comment for the exact contract. This endpoint doesn't exist yet — until it does, tapping "Sign in with Microsoft" will complete the real Microsoft sign-in but fail on the token-exchange call.
+
+Architecture-wise, the whole SSO flow follows the same pattern the rest of the app uses for swappable integrations (`EmiratesIdOcrService`, `ChequeOcrService`, `ImageCaptureService`): `SsoAuthService` is the abstract contract (`domain/repositories/sso_auth_service.dart`), `AzureAdSsoService` (`data/datasources/azure_ad_sso_data_source.dart`) is the one concrete implementation today. Adding a second provider (Google, Okta, ...) means a new class behind that same interface, not a change to `AuthRepository`/`AuthNotifier`/`LoginScreen`.
+
+## Release build
+
+Bump `version:` in `pubspec.yaml` first (`x.y.z+buildNumber`) — Android's version code and iOS's build number both come from the `+buildNumber` suffix.
+
+```bash
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter test
+```
+
+**Android** — needs a signing config once: copy `android/key.properties.example` to `android/key.properties` (git-ignored) and fill in a real keystore's `storePassword`/`keyPassword`/`keyAlias`/`storeFile`. Then:
+
+```bash
+flutter build appbundle --release --dart-define-from-file=.env --dart-define=APP_ENV=prod                    # Play Store upload
+flutter build apk --release --dart-define-from-file=.env --dart-define=APP_ENV=prod                          # single universal APK, direct install
+flutter build apk --release --split-per-abi --dart-define-from-file=.env --dart-define=APP_ENV=prod           # per-ABI APKs, direct install
+```
+
+`--split-per-abi` produces one smaller APK per CPU architecture (`app-armeabi-v7a-release.apk`, `app-arm64-v8a-release.apk`, `app-x86_64-release.apk`) under `build/app/outputs/flutter-apk/` instead of one large universal APK bundling all of them — install whichever matches the test device. The `appbundle` (`.aab`) doesn't need this flag: Play Store already splits it per-device automatically.
+
+**iOS** — code signing is `Automatic` in the Xcode project already; make sure the signing team is set in Xcode (or via `xcodebuild` args) before archiving:
+
+```bash
+flutter build ipa --release --dart-define-from-file=.env --dart-define=APP_ENV=prod
+```
+
+Swap `APP_ENV=prod` for `uat` to ship a staging build instead. As noted in `.env`, only the `dev` host is confirmed live — verify the `UAT_API_BASE_URL`/`PROD_API_BASE_URL` hostnames before relying on either.
 
 ### A note on dependency versions
 

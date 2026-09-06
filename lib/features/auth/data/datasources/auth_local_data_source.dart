@@ -19,6 +19,9 @@ abstract class AuthLocalDataSource {
   });
   Future<String?> getRefreshToken();
   Future<void> clearSession();
+
+  Future<bool?> getRememberDevice();
+  Future<void> saveRememberDevice(bool remember);
 }
 
 class AuthLocalDataSourceImpl implements AuthLocalDataSource {
@@ -62,4 +65,10 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     await _storageService.clearAuthSession();
     await _storageService.clearCachedUserJson();
   }
+
+  @override
+  Future<bool?> getRememberDevice() => _storageService.getRememberDevice();
+
+  @override
+  Future<void> saveRememberDevice(bool remember) => _storageService.saveRememberDevice(remember);
 }

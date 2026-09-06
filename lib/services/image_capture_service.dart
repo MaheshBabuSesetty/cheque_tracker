@@ -37,6 +37,7 @@ class DeviceImageCaptureService implements ImageCaptureService {
       aspectRatio: config.aspectRatio,
       shape: config.shape,
       initialLens: config.initialLens,
+      fillHeight: config.fillHeight,
     );
     if (file == null) return null;
     final bytes = await file.readAsBytes();
@@ -69,6 +70,7 @@ class _CameraConfig {
     this.aspectRatio = 4 / 3,
     this.shape = CameraFrameShape.rect,
     this.initialLens = CameraLensDirection.back,
+    this.fillHeight = false,
   });
 
   final String title;
@@ -76,6 +78,9 @@ class _CameraConfig {
   final double aspectRatio;
   final CameraFrameShape shape;
   final CameraLensDirection initialLens;
+
+  /// See [InAppCameraScreen.fillHeight].
+  final bool fillHeight;
 
   factory _CameraConfig.forPrefix(String prefix) {
     switch (prefix) {
@@ -91,36 +96,42 @@ class _CameraConfig {
           title: 'Emirates ID — front',
           guidance: 'Position the front of the Emirates ID within the frame',
           aspectRatio: 1.58,
+          fillHeight: true,
         );
       case 'id-back':
         return const _CameraConfig(
           title: 'Emirates ID — back',
           guidance: 'Position the back of the Emirates ID within the frame',
           aspectRatio: 1.58,
+          fillHeight: true,
         );
       case 'cheque-copy':
         return const _CameraConfig(
           title: 'Cheque copy',
           guidance: 'Position the cheque within the frame',
           aspectRatio: 2.1,
+          fillHeight: true,
         );
       case 'cheque-scan-select':
         return const _CameraConfig(
           title: 'Scan cheque',
           guidance: 'Position the cheque within the frame',
           aspectRatio: 2.1,
+          fillHeight: true,
         );
       case 'voucher':
         return const _CameraConfig(
           title: 'Voucher',
           guidance: 'Position the voucher within the frame',
           aspectRatio: 1.5,
+          fillHeight: true,
         );
       case 'supporting-doc':
         return const _CameraConfig(
           title: 'Supporting document',
           guidance: 'Position the document within the frame',
           aspectRatio: 1,
+          fillHeight: true,
         );
       default:
         return const _CameraConfig(title: 'Capture photo', guidance: 'Position the document within the frame');

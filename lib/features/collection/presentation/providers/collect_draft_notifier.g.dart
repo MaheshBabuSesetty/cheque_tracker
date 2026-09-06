@@ -10,26 +10,38 @@ part of 'collect_draft_notifier.dart';
 // ignore_for_file: type=lint, type=warning
 /// State for the in-progress "New collection" form. One notifier per
 /// active draft — [submit] resets it back to empty on success, ready for
-/// "Record another".
+/// "Record another". `keepAlive: true` because that lifecycle is explicit
+/// (via [submit]/[reset]), not tied to widget listener count — the
+/// multi-step capture flows below (e.g. [captureChequeCopy]) span camera
+/// navigation and OCR calls, and must not have their in-flight state
+/// evicted by autoDispose losing listeners mid-flow.
 
 @ProviderFor(CollectDraftNotifier)
 final collectDraftProvider = CollectDraftNotifierProvider._();
 
 /// State for the in-progress "New collection" form. One notifier per
 /// active draft — [submit] resets it back to empty on success, ready for
-/// "Record another".
+/// "Record another". `keepAlive: true` because that lifecycle is explicit
+/// (via [submit]/[reset]), not tied to widget listener count — the
+/// multi-step capture flows below (e.g. [captureChequeCopy]) span camera
+/// navigation and OCR calls, and must not have their in-flight state
+/// evicted by autoDispose losing listeners mid-flow.
 final class CollectDraftNotifierProvider
     extends $NotifierProvider<CollectDraftNotifier, CollectionDraft> {
   /// State for the in-progress "New collection" form. One notifier per
   /// active draft — [submit] resets it back to empty on success, ready for
-  /// "Record another".
+  /// "Record another". `keepAlive: true` because that lifecycle is explicit
+  /// (via [submit]/[reset]), not tied to widget listener count — the
+  /// multi-step capture flows below (e.g. [captureChequeCopy]) span camera
+  /// navigation and OCR calls, and must not have their in-flight state
+  /// evicted by autoDispose losing listeners mid-flow.
   CollectDraftNotifierProvider._()
     : super(
         from: null,
         argument: null,
         retry: null,
         name: r'collectDraftProvider',
-        isAutoDispose: true,
+        isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -51,11 +63,15 @@ final class CollectDraftNotifierProvider
 }
 
 String _$collectDraftNotifierHash() =>
-    r'8714f42994c04d80067622b475eb0b19533d76ac';
+    r'2c077bf96a7d1fe1da8af9ec089bf5eb7f0814b3';
 
 /// State for the in-progress "New collection" form. One notifier per
 /// active draft — [submit] resets it back to empty on success, ready for
-/// "Record another".
+/// "Record another". `keepAlive: true` because that lifecycle is explicit
+/// (via [submit]/[reset]), not tied to widget listener count — the
+/// multi-step capture flows below (e.g. [captureChequeCopy]) span camera
+/// navigation and OCR calls, and must not have their in-flight state
+/// evicted by autoDispose losing listeners mid-flow.
 
 abstract class _$CollectDraftNotifier extends $Notifier<CollectionDraft> {
   CollectionDraft build();

@@ -1,11 +1,11 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../cheques/domain/entities/cheque.dart';
 import '../../../cheques/presentation/providers/cheque_providers.dart';
 import '../../../../core/di/dependency_injection.dart';
 import '../../../../core/utils/phone_country_codes.dart';
+import '../../domain/entities/cheque_scan.dart';
 import '../../domain/entities/collection_draft.dart';
 import '../../domain/entities/collection_record.dart';
 import '../../domain/entities/vendor.dart';
@@ -14,25 +14,14 @@ import 'collections_notifier.dart';
 
 part 'collect_draft_notifier.g.dart';
 
-/// Outcome of [CollectDraftNotifier.scanToSelectCheque].
-enum ChequeScanMatchResult {
-  /// A SIGNED cheque with a matching number was found and picked.
-  matched,
-
-  /// The agent backed out of the camera — not an error, nothing to show.
-  cancelled,
-
-  /// OCR couldn't read a cheque number off the photo at all.
-  unreadable,
-
-  /// A number was read, but none of the vendor's SIGNED cheques match it.
-  noMatch,
-}
-
 /// State for the in-progress "New collection" form. One notifier per
 /// active draft — [submit] resets it back to empty on success, ready for
-/// "Record another".
-@riverpod
+/// "Record another". `keepAlive: true` because that lifecycle is explicit
+/// (via [submit]/[reset]), not tied to widget listener count — the
+/// multi-step capture flows below (e.g. [captureChequeCopy]) span camera
+/// navigation and OCR calls, and must not have their in-flight state
+/// evicted by autoDispose losing listeners mid-flow.
+@Riverpod(keepAlive: true)
 class CollectDraftNotifier extends _$CollectDraftNotifier {
   @override
   CollectionDraft build() => const CollectionDraft();
@@ -40,9 +29,19 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
   /// Picking a different vendor invalidates whatever cheque/photo was
   /// selected for the previous one — a cheque only ever belongs to one
   /// vendor.
-  void pickVendor(Vendor vendor) => state = state.copyWith(vendor: () => vendor, cheque: () => null, chequeCopyPath: () => null, chequeOcrStatus: ChequeOcrStatus.idle, chequeScan: () => null);
+  void pickVendor(Vendor vendor) => state = state.copyWith(
+        vendor: () => vendor,
+        cheque: () => null,
+        chequeCopyPath: () => null,
+        chequeScan: () => null,
+      );
 
-  void clearVendor() => state = state.copyWith(vendor: () => null, cheque: () => null, chequeCopyPath: () => null, chequeOcrStatus: ChequeOcrStatus.idle, chequeScan: () => null);
+  void clearVendor() => state = state.copyWith(
+        vendor: () => null,
+        cheque: () => null,
+        chequeCopyPath: () => null,
+        chequeScan: () => null,
+      );
 
   void setRepName(String value) => state = state.copyWith(repName: value, nameFromOcr: false);
 
@@ -106,79 +105,111 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     if (name.isNotEmpty) state = state.copyWith(repName: name, nameFromOcr: true);
   }
 
-  /// Scans a photo of the physical cheque and, if the number it reads
-  /// matches one of [vendor]'s currently-SIGNED cheques, picks that cheque
-  /// automatically. Never fabricates a match: an unreadable photo or a
-  /// number that isn't on file both fall through to the caller to handle
-  /// (e.g. show a message and let the agent retry).
+  /// Captures a photo of the cheque and, if [number] matches one of
+  /// [vendor]'s currently-SIGNED cheques, picks that cheque with the photo
+  /// just taken already attached as its copy — [number] alone decides the
+  /// match. Never fabricates a match — a number that isn't on file leaves
+  /// [CollectionDraft.cheque] untouched so the caller can show an error.
   ///
-  /// On a match, the photo just taken to find it also becomes the cheque
-  /// copy attachment — it's already a photo of the right cheque, so the
-  /// agent isn't asked to capture the same cheque a second time.
-  Future<ChequeScanMatchResult> scanToSelectCheque(Vendor vendor) async {
+  /// Once matched, the same photo is OCR'd as a non-blocking sanity check
+  /// against the matched cheque's vendor name (see [_scanChequeCopy]).
+  ///
+  /// Returns `null` if the agent backed out of the camera (nothing to
+  /// show), otherwise whether a match was found.
+  Future<bool?> captureAndSelectCheque({required Vendor vendor, required String number}) async {
+    final trimmed = number.trim();
+    if (trimmed.isEmpty) return false;
+
     final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'cheque-scan-select');
-    if (path == null) return ChequeScanMatchResult.cancelled;
+    if (path == null) return null;
 
-    final scan = await ref.read(scanChequeProvider)(path);
-    final scannedNumber = scan.chequeNumber?.trim();
-    if (scannedNumber == null || scannedNumber.isEmpty) return ChequeScanMatchResult.unreadable;
+    final match = await _findSignedCheque(vendor: vendor, number: trimmed);
+    if (match == null) return false;
 
+    state = state.copyWith(cheque: () => match, chequeCopyPath: () => path);
+    await _scanChequeCopy(path, match);
+    return true;
+  }
+
+  /// Looks for one of [vendor]'s SIGNED cheques whose number matches
+  /// [number], without touching draft state.
+  Future<Cheque?> _findSignedCheque({required Vendor vendor, required String number}) async {
     final cheques = await ref.read(signedChequesForVendorProvider(vendor).future);
-    Cheque? match;
     for (final candidate in cheques) {
-      if (candidate.chequeNumber.trim().toUpperCase() == scannedNumber.toUpperCase()) {
-        match = candidate;
-        break;
+      if (candidate.chequeNumber.trim().toUpperCase() == number.toUpperCase()) {
+        return candidate;
       }
     }
-    if (match == null) return ChequeScanMatchResult.noMatch;
-
-    state = state.copyWith(
-      cheque: () => match,
-      chequeCopyPath: () => path,
-      chequeScan: () => scan,
-      chequeOcrStatus: scan.accepted ? ChequeOcrStatus.done : ChequeOcrStatus.rejected,
+    // A cheque leaf's MICR line is zero-padded to a fixed width (e.g.
+    // "079064"), but the number as stored on file often isn't (e.g.
+    // "79064") — an exact match already tried above, so this only kicks
+    // in once that's failed, and only strips *leading* zeros (never
+    // touches interior/trailing digits) so it can't accidentally conflate
+    // two genuinely different cheque numbers.
+    final normalized = _stripLeadingZeros(number.toUpperCase());
+    for (final candidate in cheques) {
+      if (_stripLeadingZeros(candidate.chequeNumber.trim().toUpperCase()) == normalized) {
+        return candidate;
+      }
+    }
+    // Temporary diagnostic: run `flutter logs` (or check the IDE's debug
+    // console) after a "No SIGNED cheque on file matches that number"
+    // check to see exactly what was compared — tells you in one look
+    // whether the typed number is fine but that vendor's SIGNED list
+    // genuinely doesn't contain it (wrong vendor, not signed yet, etc).
+    debugPrint(
+      'Cheque select-by-number: no match for "$number" among '
+      '${vendor.name}\'s ${cheques.length} SIGNED cheque(s): '
+      '${cheques.map((c) => c.chequeNumber).join(', ')}',
     );
-    return ChequeScanMatchResult.matched;
+    return null;
+  }
+
+  /// "00445566" → "445566"; "0" → "0" (never strips down to empty for an
+  /// all-zero string — see [MlKitChequeOcrService]'s equivalent
+  /// placeholder guard for why an all-zero cheque number is never treated
+  /// as meaningful in the first place, upstream of this comparison).
+  static String _stripLeadingZeros(String digits) {
+    final stripped = digits.replaceFirst(RegExp(r'^0+'), '');
+    return stripped.isEmpty ? '0' : stripped;
   }
 
   void clearCheque() => state = state.copyWith(
         cheque: () => null,
         chequeCopyPath: () => null,
-        chequeOcrStatus: ChequeOcrStatus.idle,
         chequeScan: () => null,
       );
 
+  /// Captures/replaces the cheque copy photo, then re-runs the OCR sanity
+  /// check against the already-selected cheque (see [_scanChequeCopy]).
   Future<void> captureChequeCopy() async {
+    final cheque = state.cheque;
+    if (cheque == null) return;
     final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'cheque-copy');
     if (path == null) return;
-    state = state.copyWith(chequeCopyPath: () => path, chequeScan: () => null, chequeOcrStatus: ChequeOcrStatus.scanning);
-    await _runChequeScan(path);
+    state = state.copyWith(chequeCopyPath: () => path);
+    await _scanChequeCopy(path, cheque);
   }
 
-  Future<void> rescanCheque() async {
-    final path = state.chequeCopyPath;
-    if (path == null) return;
-    state = state.copyWith(chequeOcrStatus: ChequeOcrStatus.scanning);
-    await _runChequeScan(path);
-  }
-
-  /// The scan is a non-blocking sanity check against the already-selected
-  /// [CollectionDraft.cheque] — it never overwrites/fabricates the cheque
-  /// number or amount, and a rejected/mismatched read never blocks
-  /// [CollectionDraft.stepsDone].
-  Future<void> _runChequeScan(String path) async {
-    final scan = await ref.read(scanChequeProvider)(path);
-    state = state.copyWith(
-      chequeOcrStatus: scan.accepted ? ChequeOcrStatus.done : ChequeOcrStatus.rejected,
-      chequeScan: () => scan,
-    );
-  }
-
-  /// Discards the captured cheque photo so the agent can retake it — the
-  /// tile reverts to its empty state, but the selected cheque stays.
-  void recaptureCheque() {
-    state = state.copyWith(chequeCopyPath: () => null, chequeOcrStatus: ChequeOcrStatus.idle, chequeScan: () => null);
+  /// OCR's [path] and checks it against [cheque]'s vendor name — a
+  /// non-blocking sanity check ("did you photograph the right cheque?"),
+  /// surfaced via [CollectionDraft.chequeScanWarnings]. Never overwrites or
+  /// fabricates [cheque] itself.
+  ///
+  /// A failed scan (any exception — a stalled ML Kit model download, a
+  /// decode error, ...) must still clear [CollectionDraft.isScanningChequeCopy]:
+  /// that flag alone blocks step 4's completion, so leaving it stuck at
+  /// `true` would make an already-captured, already-selected cheque look
+  /// like it reverted to incomplete.
+  Future<void> _scanChequeCopy(String path, Cheque cheque) async {
+    state = state.copyWith(isScanningChequeCopy: true, chequeScan: () => null);
+    ChequeScan? scan;
+    try {
+      scan = await ref.read(scanChequeProvider)(path, expectedPayeeName: cheque.supplierName);
+    } catch (e) {
+      debugPrint('Cheque copy scan failed, treating as unscanned: $e');
+    }
+    state = state.copyWith(isScanningChequeCopy: false, chequeScan: () => scan);
   }
 
   Future<void> captureVoucher() async {

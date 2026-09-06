@@ -42,7 +42,7 @@ final class AuthNotifierProvider
   AuthNotifier create() => AuthNotifier();
 }
 
-String _$authNotifierHash() => r'24bf2b3b590abdb4b00deb9ae993a27da510393f';
+String _$authNotifierHash() => r'eee4aed8a418be40b885bf6ae606a53e2607621f';
 
 /// Session state for the whole app: `null` data means signed out, an error
 /// means the last action (login) failed. Modeled with [AsyncValue] instead

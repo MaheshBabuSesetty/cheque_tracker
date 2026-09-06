@@ -138,6 +138,38 @@ class _DetailBody extends StatelessWidget {
                           context,
                         ).textTheme.titleLarge?.copyWith(fontSize: 23),
                       ),
+                      const SizedBox(height: 13),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 120,
+                        child: _AttachmentTile(
+                          label: 'Cheque copy',
+                          url: record.chequePhotoUrl,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 11),
+                  _DetailCard(
+                    children: [
+                      Text(
+                        'PROFILE',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: colors.textMuted,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 11),
+                      SizedBox(
+                        height: 120,
+                        width: 120,
+                        child: _AttachmentTile(
+                          label: 'Rep photo',
+                          url: record.collectorPhotoUrl,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 11),
@@ -165,16 +197,6 @@ class _DetailBody extends StatelessWidget {
                         value: record.emiratesId.isEmpty
                             ? '—'
                             : record.emiratesId,
-                      ),
-                      _DetailRow(
-                        label: 'Nationality',
-                        value: record.nationality.isEmpty
-                            ? '—'
-                            : record.nationality,
-                      ),
-                      _DetailRow(
-                        label: 'ID expiry',
-                        value: record.expiry.isEmpty ? '—' : record.expiry,
                         isLast: true,
                       ),
                     ],
@@ -183,7 +205,7 @@ class _DetailBody extends StatelessWidget {
                   _DetailCard(
                     children: [
                       Text(
-                        'ATTACHMENTS',
+                        'EMIRATES ID',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
@@ -201,10 +223,6 @@ class _DetailBody extends StatelessWidget {
                         childAspectRatio: 1.4,
                         children: [
                           _AttachmentTile(
-                            label: 'Rep photo',
-                            url: record.collectorPhotoUrl,
-                          ),
-                          _AttachmentTile(
                             label: 'ID front',
                             url: record.idFrontUrl,
                           ),
@@ -212,25 +230,17 @@ class _DetailBody extends StatelessWidget {
                             label: 'ID back',
                             url: record.idBackUrl,
                           ),
-                          _AttachmentTile(
-                            label: 'Cheque copy',
-                            url: record.chequePhotoUrl,
-                          ),
-                          if (record.voucherUrl != null)
-                            _AttachmentTile(
-                              label: 'Voucher',
-                              url: record.voucherUrl,
-                            ),
                         ],
                       ),
                     ],
                   ),
-                  if (record.supportingDocuments.isNotEmpty) ...[
+                  if (record.voucherUrl != null ||
+                      record.supportingDocuments.isNotEmpty) ...[
                     const SizedBox(height: 11),
                     _DetailCard(
                       children: [
                         Text(
-                          'SUPPORTING DOCUMENTS',
+                          'VOUCHERS & DOCUMENTS',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -243,17 +253,15 @@ class _DetailBody extends StatelessWidget {
                           spacing: 9,
                           runSpacing: 9,
                           children: [
+                            if (record.voucherUrl != null)
+                              _PreviewThumb(
+                                url: record.voucherUrl!,
+                                label: 'Voucher',
+                              ),
                             for (final doc in record.supportingDocuments)
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(11),
-                                child: SizedBox(
-                                  width: 74,
-                                  height: 74,
-                                  child: AuthenticatedNetworkImage(
-                                    url: doc.url,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
+                              _PreviewThumb(
+                                url: doc.url,
+                                label: 'Document',
                               ),
                           ],
                         ),
@@ -421,7 +429,7 @@ class _AttachmentTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final imageUrl = url;
     final colors = context.semanticColors;
-    return Container(
+    final tile = Container(
       decoration: BoxDecoration(
         border: Border.all(color: colors.neutralTintBorder),
         borderRadius: BorderRadius.circular(11),
@@ -444,6 +452,72 @@ class _AttachmentTile extends StatelessWidget {
                 fit: BoxFit.cover,
               ),
             ),
+    );
+    if (imageUrl == null) return tile;
+    return GestureDetector(
+      onTap: () => _openPhotoPreview(context, url: imageUrl, label: label),
+      child: tile,
+    );
+  }
+}
+
+class _PreviewThumb extends StatelessWidget {
+  const _PreviewThumb({required this.url, required this.label});
+
+  final String url;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _openPhotoPreview(context, url: url, label: label),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(11),
+        child: SizedBox(
+          width: 74,
+          height: 74,
+          child: AuthenticatedNetworkImage(url: url, fit: BoxFit.cover),
+        ),
+      ),
+    );
+  }
+}
+
+void _openPhotoPreview(
+  BuildContext context, {
+  required String url,
+  required String label,
+}) {
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (context) => _PhotoPreviewScreen(url: url, label: label),
+    ),
+  );
+}
+
+class _PhotoPreviewScreen extends StatelessWidget {
+  const _PhotoPreviewScreen({required this.url, required this.label});
+
+  final String url;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text(label),
+      ),
+      body: InteractiveViewer(
+        minScale: 1,
+        maxScale: 5,
+        child: SizedBox.expand(
+          child: AuthenticatedNetworkImage(url: url, fit: BoxFit.contain),
+        ),
+      ),
     );
   }
 }

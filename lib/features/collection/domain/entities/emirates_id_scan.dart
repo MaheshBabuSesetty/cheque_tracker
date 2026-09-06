@@ -7,19 +7,20 @@ class EmiratesIdScan extends Equatable {
   const EmiratesIdScan({
     required this.idNumber,
     required this.name,
-    required this.nationality,
-    required this.expiry,
     required this.confidence,
+    this.nationality,
   });
 
   final String idNumber;
   final String name;
-  final String nationality;
-  final String expiry;
 
   /// e.g. "97%" — surfaced to the agent, not used for any logic.
   final String confidence;
 
+  /// Optional — not every card layout has it in a readable position, and
+  /// nothing downstream (completion checks, submission) depends on it.
+  final String? nationality;
+
   @override
-  List<Object?> get props => [idNumber, name, nationality, expiry, confidence];
+  List<Object?> get props => [idNumber, name, confidence, nationality];
 }

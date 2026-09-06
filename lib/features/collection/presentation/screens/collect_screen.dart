@@ -111,6 +111,7 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
     final colors = context.semanticColors;
     final confirmed = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text('Submit this collection?'),
@@ -769,14 +770,6 @@ class _EmiratesIdStep extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 11),
-                Row(
-                  children: [
-                    _OcrField(label: 'NATIONALITY', value: scan.nationality),
-                    const SizedBox(width: 10),
-                    _OcrField(label: 'EXPIRY', value: scan.expiry),
-                  ],
-                ),
               ],
             ),
           ),
@@ -838,26 +831,43 @@ class _ChequeStep extends StatefulWidget {
 }
 
 class _ChequeStepState extends State<_ChequeStep> {
-  bool _scanning = false;
-  String? _scanError;
+  final _manualNumberController = TextEditingController();
+  bool _capturing = false;
+  String? _error;
 
-  Future<void> _scanToSelect(Vendor vendor) async {
+  @override
+  void initState() {
+    super.initState();
+    // Rebuilds on every keystroke so the capture button's enabled state
+    // tracks whether a cheque number has been typed yet.
+    _manualNumberController.addListener(_onManualNumberChanged);
+  }
+
+  @override
+  void dispose() {
+    _manualNumberController.removeListener(_onManualNumberChanged);
+    _manualNumberController.dispose();
+    super.dispose();
+  }
+
+  void _onManualNumberChanged() => setState(() {});
+
+  /// Captures a photo of the cheque, then matches the typed number
+  /// against the vendor's SIGNED cheques — no OCR is run on the photo.
+  /// On a match, `draft.cheque` becomes non-null and the step swaps to
+  /// `_ChequePhotoStep`, already showing the photo just taken.
+  Future<void> _captureAndSelect(Vendor vendor) async {
+    final number = _manualNumberController.text.trim();
+    if (number.isEmpty) return;
     setState(() {
-      _scanning = true;
-      _scanError = null;
+      _capturing = true;
+      _error = null;
     });
-    final result = await widget.notifier.scanToSelectCheque(vendor);
+    final matched = await widget.notifier.captureAndSelectCheque(vendor: vendor, number: number);
     if (!mounted) return;
     setState(() {
-      _scanning = false;
-      _scanError = switch (result) {
-        ChequeScanMatchResult.matched ||
-        ChequeScanMatchResult.cancelled => null,
-        ChequeScanMatchResult.unreadable =>
-          "Couldn't read a cheque number from that photo. Try again.",
-        ChequeScanMatchResult.noMatch =>
-          'No SIGNED cheque on file matches that number. Try again.',
-      };
+      _capturing = false;
+      _error = matched == false ? 'No SIGNED cheque on file matches that number.' : null;
     });
   }
 
@@ -870,13 +880,16 @@ class _ChequeStepState extends State<_ChequeStep> {
     final cheque = draft.cheque;
 
     if (cheque == null) {
+      final hasTypedNumber = _manualNumberController.text.trim().isNotEmpty;
+      final canCapture = vendor != null && !_capturing && hasTypedNumber;
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             vendor == null
                 ? 'Pick a vendor in step 1 first.'
-                : "Scan one of this vendor's SIGNED cheques — the collection is recorded against it.",
+                : "Type this vendor's SIGNED cheque number, then capture a photo of it.",
             style: TextStyle(
               fontSize: 11,
               color: colors.textMuted,
@@ -884,26 +897,31 @@ class _ChequeStepState extends State<_ChequeStep> {
             ),
           ),
           const SizedBox(height: 10),
+          TextField(
+            controller: _manualNumberController,
+            textCapitalization: TextCapitalization.characters,
+            enabled: vendor != null && !_capturing,
+            decoration: const InputDecoration(
+              isDense: true,
+              hintText: 'Type the cheque number',
+            ),
+            onSubmitted: canCapture ? (_) => _captureAndSelect(vendor) : null,
+          ),
+          const SizedBox(height: 10),
           GestureDetector(
-            onTap: vendor == null || _scanning
-                ? null
-                : () => _scanToSelect(vendor),
+            onTap: canCapture ? () => _captureAndSelect(vendor) : null,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 13),
               decoration: BoxDecoration(
-                color: vendor == null
-                    ? colors.placeholderBg
-                    : colors.neutralTint,
+                color: canCapture ? colors.neutralTint : colors.placeholderBg,
                 border: Border.all(
-                  color: vendor == null
-                      ? colors.inputBorder
-                      : colors.neutralTintBorder,
+                  color: canCapture ? colors.neutralTintBorder : colors.inputBorder,
                 ),
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Row(
                 children: [
-                  if (_scanning)
+                  if (_capturing)
                     SizedBox(
                       width: 16,
                       height: 16,
@@ -916,18 +934,16 @@ class _ChequeStepState extends State<_ChequeStep> {
                     Icon(
                       Icons.photo_camera_outlined,
                       size: 18,
-                      color: colors.accent,
+                      color: canCapture ? colors.accent : colors.textMuted,
                     ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _scanning
-                          ? 'Reading cheque…'
-                          : 'Scan a cheque to auto-select',
+                      _capturing ? 'Capturing…' : 'Capture cheque image',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: colors.bodyText,
+                        color: canCapture ? colors.bodyText : colors.textMuted,
                       ),
                     ),
                   ),
@@ -935,10 +951,10 @@ class _ChequeStepState extends State<_ChequeStep> {
               ),
             ),
           ),
-          if (_scanError != null) ...[
+          if (_error != null) ...[
             const SizedBox(height: 7),
             Text(
-              _scanError!,
+              _error!,
               style: TextStyle(
                 fontSize: 11,
                 color: colors.danger,
@@ -969,17 +985,9 @@ class _ChequePhotoStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final scan = draft.chequeScan;
-    final scanning = draft.chequeOcrStatus == ChequeOcrStatus.scanning;
-    final hasScan =
-        draft.chequeOcrStatus == ChequeOcrStatus.done ||
-        draft.chequeOcrStatus == ChequeOcrStatus.rejected;
-    final warnings = [
-      if (scan != null && !scan.accepted)
-        'Currency read as ${scan.detectedCurrency}, not AED.',
-      if (draft.chequeNumberMismatch)
-        "Scanned cheque no. doesn't match the selected cheque.",
-    ];
+    final scanning = draft.isScanningChequeCopy;
+    final warnings = draft.chequeScanWarnings;
+    final hasScan = !scanning && draft.chequeScan != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1097,27 +1105,11 @@ class _ChequePhotoStep extends StatelessWidget {
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
-                    'Photo matches the selected cheque · ${scan?.confidence} confidence',
+                    "Photo matches the selected cheque's vendor.",
                     style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                       color: colors.success,
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: notifier.rescanCheque,
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: Size.zero,
-                  ),
-                  child: Text(
-                    'Re-scan',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: colors.accent,
-                      decoration: TextDecoration.underline,
                     ),
                   ),
                 ),
@@ -1162,7 +1154,7 @@ class _ChequePhotoStep extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
-                    onPressed: notifier.recaptureCheque,
+                    onPressed: notifier.captureChequeCopy,
                     child: const Text('Retake photo'),
                   ),
                 ),

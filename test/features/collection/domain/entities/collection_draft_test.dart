@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const vendor = Vendor(id: 'v1', name: 'Al Falah Building Materials LLC', code: 'VND-0114', trn: '100234567800003');
-  const scan = EmiratesIdScan(idNumber: '784-1991-1234567-3', name: 'A', nationality: 'India', expiry: '2029', confidence: '97%');
+  const scan = EmiratesIdScan(idNumber: '784-1991-1234567-3', name: 'A', confidence: '97%');
   final cheque = Cheque(
     id: 'chq-1',
     serialNumber: 100234,
@@ -51,17 +51,42 @@ void main() {
     expect(draft.isComplete, isTrue);
   });
 
-  test('a cheque photo mid-scan keeps step 4 incomplete, but a rejected/mismatched read does not block it', () {
-    final base = CollectionDraft().copyWith(cheque: () => cheque, chequeCopyPath: () => '/tmp/cheque.jpg');
-
-    expect(base.copyWith(chequeOcrStatus: ChequeOcrStatus.scanning).stepsDone[3], isFalse);
-    expect(base.copyWith(chequeOcrStatus: ChequeOcrStatus.rejected).stepsDone[3], isTrue);
-    expect(base.copyWith(chequeOcrStatus: ChequeOcrStatus.done).stepsDone[3], isTrue);
-  });
-
   test('step 4 is incomplete without a selected cheque even with a photo captured', () {
     final draft = CollectionDraft().copyWith(chequeCopyPath: () => '/tmp/cheque.jpg');
     expect(draft.stepsDone[3], isFalse);
+  });
+
+  test('step 4 is incomplete while the cheque copy is being scanned, but a mismatched vendor name does not block it', () {
+    final base = CollectionDraft().copyWith(cheque: () => cheque, chequeCopyPath: () => '/tmp/cheque.jpg');
+
+    expect(base.copyWith(isScanningChequeCopy: true).stepsDone[3], isFalse);
+    expect(
+      base.copyWith(
+        chequeScan: () => const ChequeScan(detectedCurrency: 'AED', accepted: true, nameMatched: false),
+      ).stepsDone[3],
+      isTrue,
+    );
+  });
+
+  test('chequeScanWarnings flags a vendor name OCR could not find, non-blocking', () {
+    final draft = CollectionDraft().copyWith(
+      cheque: () => cheque,
+      chequeCopyPath: () => '/tmp/cheque.jpg',
+      chequeScan: () => const ChequeScan(detectedCurrency: 'AED', accepted: true, nameMatched: false),
+    );
+
+    expect(draft.chequeScanWarnings, isNotEmpty);
+    expect(draft.stepsDone[3], isTrue);
+  });
+
+  test('chequeScanWarnings is empty once the vendor name matches', () {
+    final draft = CollectionDraft().copyWith(
+      cheque: () => cheque,
+      chequeCopyPath: () => '/tmp/cheque.jpg',
+      chequeScan: () => const ChequeScan(detectedCurrency: 'AED', accepted: true, nameMatched: true),
+    );
+
+    expect(draft.chequeScanWarnings, isEmpty);
   });
 
   test('an invalid mobile number keeps the representative step incomplete', () {
@@ -82,18 +107,6 @@ void main() {
 
     final draft = CollectionDraft().copyWith(cheque: () => cheque);
     expect(draft.amountValue, 184500);
-  });
-
-  test('chequeNumberMismatch flags a scanned number that disagrees with the selected cheque, non-blocking', () {
-    final mismatched = CollectionDraft().copyWith(
-      cheque: () => cheque,
-      chequeCopyPath: () => '/tmp/cheque.jpg',
-      chequeOcrStatus: ChequeOcrStatus.done,
-      chequeScan: () => const ChequeScan(detectedCurrency: 'AED', accepted: true, chequeNumber: 'CHQ-999999', amount: 184500),
-    );
-
-    expect(mismatched.chequeNumberMismatch, isTrue);
-    expect(mismatched.stepsDone[3], isTrue);
   });
 
   test('setting repName manually is expected to clear nameFromOcr via copyWith', () {

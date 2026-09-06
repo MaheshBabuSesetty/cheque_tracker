@@ -15,6 +15,13 @@ typedef AuthSession = ({
 
 abstract class AuthRemoteDataSource {
   Future<AuthSession> login({required String username, required String password});
+
+  /// Exchanges an already-verified SSO identity token (see
+  /// `SsoAuthService.signIn`) for this app's own session — mirrors [login]
+  /// in every way except the credential: the backend validates [idToken]
+  /// against the [provider]'s public keys/issuer rather than a password,
+  /// then looks up/provisions the matching [AuthSession.user] the same way.
+  Future<AuthSession> loginWithSso({required String idToken, required String provider});
   Future<AuthSession> refresh({required String refreshToken});
   Future<void> logout({required String refreshToken});
   Future<UserModel> getCurrentUser();
@@ -42,6 +49,19 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       final response = await unauthenticatedDio.post<Map<String, dynamic>>(
         ApiEndpoints.login,
         data: LoginRequestDto(username: username, password: password).toJson(),
+      );
+      return _sessionFromJson(response.data!);
+    } on DioException catch (e) {
+      throw ApiErrorParser.parse(e);
+    }
+  }
+
+  @override
+  Future<AuthSession> loginWithSso({required String idToken, required String provider}) async {
+    try {
+      final response = await unauthenticatedDio.post<Map<String, dynamic>>(
+        ApiEndpoints.ssoLogin,
+        data: {'idToken': idToken, 'provider': provider},
       );
       return _sessionFromJson(response.data!);
     } on DioException catch (e) {

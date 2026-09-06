@@ -18,8 +18,6 @@ void main() {
   const scan = EmiratesIdScan(
     idNumber: '784-1991-1234567-3',
     name: 'Ahmed Rasheed Nazeer',
-    nationality: 'India',
-    expiry: '21 Nov 2028',
     confidence: '97%',
   );
   final cheque = Cheque(

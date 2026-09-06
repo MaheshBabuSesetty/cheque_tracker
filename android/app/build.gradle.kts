@@ -41,6 +41,10 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // flutter_appauth's redirect-URI receiver activity — must match
+        // AzureAdConfig.redirectUri's scheme (com.latinem.cheque_tracker://...)
+        // and the platform registered on the Entra ID app registration.
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.latinem.cheque_tracker"
     }
 
     signingConfigs {
