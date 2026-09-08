@@ -12,6 +12,7 @@ class ChequeScan extends Equatable {
     this.confidence,
     this.chequeNumber,
     this.amount,
+    this.nameMatched,
   });
 
   final String detectedCurrency;
@@ -21,6 +22,10 @@ class ChequeScan extends Equatable {
   final String? chequeNumber;
   final double? amount;
 
+  /// Whether the expected payee name was found in the OCR'd text — `null`
+  /// when no name was passed to [ChequeOcrService.scan] to check against.
+  final bool? nameMatched;
+
   @override
-  List<Object?> get props => [detectedCurrency, accepted, bank, confidence, chequeNumber, amount];
+  List<Object?> get props => [detectedCurrency, accepted, bank, confidence, chequeNumber, amount, nameMatched];
 }

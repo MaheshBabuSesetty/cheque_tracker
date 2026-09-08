@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../core/utils/result.dart';
+import '../../../collection/presentation/providers/collection_providers.dart';
 import '../../domain/entities/user.dart';
 import 'auth_providers.dart';
 
@@ -16,19 +17,56 @@ class AuthNotifier extends _$AuthNotifier {
   @override
   FutureOr<User?> build() async {
     final result = await ref.read(getCurrentUserProvider)();
-    return switch (result) {
+    final user = switch (result) {
       ResultSuccess(:final data) => data,
       ResultError() => null,
     };
+    unawaited(_syncVendorsIfVrm(user));
+    return user;
   }
 
-  Future<void> login({required String agentId, required String password}) async {
+  Future<void> login({
+    required String username,
+    required String password,
+    required bool rememberDevice,
+  }) async {
     state = const AsyncLoading();
-    final result = await ref.read(loginUserProvider)(agentId: agentId, password: password);
+    final result = await ref
+        .read(loginUserProvider)(username: username, password: password, rememberDevice: rememberDevice);
     state = switch (result) {
       ResultSuccess(:final data) => AsyncData(data),
       ResultError(:final failure) => AsyncError(failure, StackTrace.current),
     };
+    if (result is ResultSuccess<User>) unawaited(_syncVendorsIfVrm(result.data));
+  }
+
+  /// Same shape as [login], but a `null`-data success (the agent cancelled
+  /// the Microsoft sign-in UI) restores the previous signed-out state
+  /// instead of surfacing an error snackbar — see [AuthRepository.
+  /// loginWithSso]'s doc comment.
+  Future<void> loginWithSso({required bool rememberDevice}) async {
+    state = const AsyncLoading();
+    final result = await ref.read(loginWithSsoProvider)(rememberDevice: rememberDevice);
+    state = switch (result) {
+      ResultSuccess(:final data) => AsyncData(data),
+      ResultError(:final failure) => AsyncError(failure, StackTrace.current),
+    };
+    if (result is ResultSuccess<User?>) unawaited(_syncVendorsIfVrm(result.data));
+  }
+
+  /// Refreshes the on-device vendor-master cache right after a fresh login
+  /// and on every session resume (cold start with an existing session) —
+  /// VRM-only server-side, so non-VRM accounts skip it entirely rather than
+  /// hitting a guaranteed 403. Never awaited by callers and never rethrows:
+  /// a sync failure here must not block sign-in or app startup — the
+  /// vendor picker still works via `GetVendors`'s cache-or-fetch fallback.
+  Future<void> _syncVendorsIfVrm(User? user) async {
+    if (user == null || !user.isVrm) return;
+    try {
+      await ref.read(syncVendorsProvider)();
+    } catch (_) {
+      // Swallowed intentionally — see doc comment above.
+    }
   }
 
   Future<void> logout() async {

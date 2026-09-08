@@ -5,5 +5,7 @@ import '../entities/cheque_scan.dart';
 /// nothing about scanning a cheque overlaps with scanning an ID (Interface
 /// Segregation). Swappable for a real OCR provider the same way.
 abstract class ChequeOcrService {
-  Future<ChequeScan> scan(String imagePath);
+  /// When [expectedPayeeName] is given, the result's [ChequeScan.nameMatched]
+  /// reports whether that name was found on the leaf — otherwise it's null.
+  Future<ChequeScan> scan(String imagePath, {String? expectedPayeeName});
 }

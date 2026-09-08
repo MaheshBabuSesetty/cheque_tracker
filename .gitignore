@@ -43,3 +43,13 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+/android/.gradle/
+
+# Release signing secrets — never commit the keystore or its credentials.
+/android/key.properties
+*.jks
+*.keystore
+
+# Per-environment API base URLs (dev/uat/prod) — see lib/core/config/app_environment.dart.
+.env

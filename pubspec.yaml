@@ -41,13 +41,19 @@ dependencies:
   freezed_annotation: ^3.0.0
   json_annotation: ^4.9.0
   shared_preferences: ^2.3.3
+  flutter_secure_storage: ^9.2.2
   connectivity_plus: ^6.1.0
   equatable: ^2.0.7
   google_fonts: ^6.2.1
-  image_picker: ^1.1.2
+  camera: ^0.11.4
   path_provider: ^2.1.5
   intl: ^0.19.0
   google_mlkit_text_recognition: ^0.14.0
+  image: ^4.3.0
+  package_info_plus: ^8.0.0
+  safe_device: ^1.1.6
+  http_parser: ^4.1.2
+  flutter_appauth: ^12.1.0
 
 dev_dependencies:
   flutter_test:
@@ -65,6 +71,7 @@ dev_dependencies:
   freezed: ^3.0.0
   json_serializable: ^6.9.0
   mocktail: ^1.0.4
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -107,3 +114,14 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Regenerate app icons after changing the source images with:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  remove_alpha_ios: true
+  min_sdk_android: 21
+  adaptive_icon_background: "#0A0A0A"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"

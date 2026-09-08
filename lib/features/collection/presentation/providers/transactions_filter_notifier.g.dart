@@ -8,18 +8,18 @@ part of 'transactions_filter_notifier.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// The transactions search box's current text — filtering is search-only
-/// (no status chips); the per-row `StatusBadge` still shows Synced/Pending.
+/// The transactions search box's current text — filtering is search-only,
+/// over whatever `GET /collections` returns.
 
 @ProviderFor(TransactionsSearchNotifier)
 final transactionsSearchProvider = TransactionsSearchNotifierProvider._();
 
-/// The transactions search box's current text — filtering is search-only
-/// (no status chips); the per-row `StatusBadge` still shows Synced/Pending.
+/// The transactions search box's current text — filtering is search-only,
+/// over whatever `GET /collections` returns.
 final class TransactionsSearchNotifierProvider
     extends $NotifierProvider<TransactionsSearchNotifier, String> {
-  /// The transactions search box's current text — filtering is search-only
-  /// (no status chips); the per-row `StatusBadge` still shows Synced/Pending.
+  /// The transactions search box's current text — filtering is search-only,
+  /// over whatever `GET /collections` returns.
   TransactionsSearchNotifierProvider._()
     : super(
         from: null,
@@ -50,8 +50,8 @@ final class TransactionsSearchNotifierProvider
 String _$transactionsSearchNotifierHash() =>
     r'6e5af72e9e3454b0230dbba5d671207215caaa41';
 
-/// The transactions search box's current text — filtering is search-only
-/// (no status chips); the per-row `StatusBadge` still shows Synced/Pending.
+/// The transactions search box's current text — filtering is search-only,
+/// over whatever `GET /collections` returns.
 
 abstract class _$TransactionsSearchNotifier extends $Notifier<String> {
   String build();
@@ -87,11 +87,11 @@ final filteredCollectionsProvider = FilteredCollectionsProvider._();
 final class FilteredCollectionsProvider
     extends
         $FunctionalProvider<
-          List<CollectionRecord>,
-          List<CollectionRecord>,
-          List<CollectionRecord>
+          List<CollectionSummary>,
+          List<CollectionSummary>,
+          List<CollectionSummary>
         >
-    with $Provider<List<CollectionRecord>> {
+    with $Provider<List<CollectionSummary>> {
   /// The transactions list after applying the current search text. Derives
   /// from [collectionsProvider] rather than duplicating its data, so a new
   /// submission (which invalidates that provider) flows through
@@ -112,23 +112,23 @@ final class FilteredCollectionsProvider
 
   @$internal
   @override
-  $ProviderElement<List<CollectionRecord>> $createElement(
+  $ProviderElement<List<CollectionSummary>> $createElement(
     $ProviderPointer pointer,
   ) => $ProviderElement(pointer);
 
   @override
-  List<CollectionRecord> create(Ref ref) {
+  List<CollectionSummary> create(Ref ref) {
     return filteredCollections(ref);
   }
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(List<CollectionRecord> value) {
+  Override overrideWithValue(List<CollectionSummary> value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<List<CollectionRecord>>(value),
+      providerOverride: $SyncValueProvider<List<CollectionSummary>>(value),
     );
   }
 }
 
 String _$filteredCollectionsHash() =>
-    r'b70bc6eb8c8fddf9f3435ed0ae29d58c89ae39f1';
+    r'11641517173c97c7489bf653a148d01d8c9f9fe5';

@@ -1,3 +1,4 @@
+import 'package:cheque_tracker/features/cheques/domain/entities/cheque.dart';
 import 'package:cheque_tracker/features/collection/domain/entities/collection_draft.dart';
 import 'package:cheque_tracker/features/collection/domain/entities/collection_record.dart';
 import 'package:cheque_tracker/features/collection/domain/entities/emirates_id_scan.dart';
@@ -17,12 +18,24 @@ void main() {
   const scan = EmiratesIdScan(
     idNumber: '784-1991-1234567-3',
     name: 'Ahmed Rasheed Nazeer',
-    nationality: 'India',
-    expiry: '21 Nov 2028',
     confidence: '97%',
   );
+  final cheque = Cheque(
+    id: 'chq-1',
+    serialNumber: 100234,
+    vendorId: vendor.id,
+    supplierName: vendor.name,
+    chequeType: 'Non-Nego',
+    paymentType: 'STND',
+    bank: 'ENBD',
+    chequeNumber: 'CHQ-100234',
+    chequeDate: DateTime(2026, 7, 25),
+    amount: 184500,
+    signedBy: 'M. Al Suwaidi',
+    status: 'SIGNED',
+  );
 
-  final completeDraft = const CollectionDraft().copyWith(
+  final completeDraft = CollectionDraft().copyWith(
     vendor: () => vendor,
     repName: 'Rashid Kamal',
     repMobile: '501234567',
@@ -30,29 +43,25 @@ void main() {
     idFrontPath: () => '/tmp/front.jpg',
     idBackPath: () => '/tmp/back.jpg',
     frontIdScan: () => scan,
-    chequeNumber: 'CHQ-100234',
-    chequeAmount: '184500',
-    chequeCurrency: 'USD',
+    cheque: () => cheque,
     chequeCopyPath: () => '/tmp/cheque.jpg',
     consent: true,
     signaturePath: () => '/tmp/signature.png',
   );
 
+  final serverRecord = CollectionRecord(
+    id: 'col-1',
+    chequeId: cheque.id,
+    chequeNumber: cheque.chequeNumber,
+    vendorName: vendor.name,
+    amount: cheque.amount,
+    repName: 'Rashid Kamal',
+    timestamp: DateTime(2026, 8, 15),
+    newChequeStatus: 'ISSUED',
+  );
+
   setUpAll(() {
-    registerFallbackValue(CollectionRecord(
-      id: 'fallback',
-      ref: 'fallback',
-      vendorName: 'fallback',
-      repName: 'fallback',
-      repMobile: 'fallback',
-      emiratesId: 'fallback',
-      nationality: 'fallback',
-      expiry: 'fallback',
-      chequeNumber: 'fallback',
-      amount: 0,
-      status: CollectionStatus.pending,
-      timestamp: DateTime(2026),
-    ));
+    registerFallbackValue(const CollectionDraft());
   });
 
   setUp(() {
@@ -60,45 +69,18 @@ void main() {
     usecase = SubmitCollection(repository);
   });
 
-  test('builds a record from the completed draft and persists it', () async {
-    when(() => repository.getAll()).thenAnswer((_) async => const []);
-    when(() => repository.submit(any())).thenAnswer((invocation) async => invocation.positionalArguments.first as CollectionRecord);
+  test('delegates the completed draft to the repository and returns its record', () async {
+    when(() => repository.submit(completeDraft)).thenAnswer((_) async => serverRecord);
 
     final record = await usecase(completeDraft);
 
-    expect(record.vendorName, vendor.name);
-    expect(record.repName, 'Rashid Kamal');
-    expect(record.repMobile, '+971 501234567');
-    expect(record.emiratesId, scan.idNumber);
-    expect(record.chequeNumber, 'CHQ-100234');
-    expect(record.amount, 184500);
-    expect(record.currency, 'USD');
-    expect(record.status, CollectionStatus.synced);
-    verify(() => repository.submit(any())).called(1);
+    expect(record, serverRecord);
+    verify(() => repository.submit(completeDraft)).called(1);
   });
 
-  test('numbers the ref sequentially off the existing record count', () async {
-    when(() => repository.getAll()).thenAnswer((_) async => List.generate(
-          5,
-          (i) => CollectionRecord(
-            id: 'seed-$i',
-            ref: 'COL-2026-034$i',
-            vendorName: 'X',
-            repName: 'X',
-            repMobile: 'X',
-            emiratesId: 'X',
-            nationality: 'X',
-            expiry: 'X',
-            chequeNumber: 'X',
-            amount: 0,
-            status: CollectionStatus.synced,
-            timestamp: DateTime(2026),
-          ),
-        ));
-    when(() => repository.submit(any())).thenAnswer((invocation) async => invocation.positionalArguments.first as CollectionRecord);
-
-    final record = await usecase(completeDraft);
-
-    expect(record.ref, endsWith('0347'));
+  test('asserts on an incomplete draft rather than calling the repository', () {
+    const incomplete = CollectionDraft();
+    expect(() => usecase(incomplete), throwsA(isA<AssertionError>()));
+    verifyNever(() => repository.submit(any()));
   });
 }

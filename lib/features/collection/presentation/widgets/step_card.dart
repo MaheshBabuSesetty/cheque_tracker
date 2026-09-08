@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/theme_extensions.dart';
 
 /// One numbered card in the "New collection" form (Vendor, Representative,
 /// Emirates ID, …): a circled step number, title, a DONE/REQUIRED/OPTIONAL
@@ -32,6 +33,7 @@ class StepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.semanticColors;
     final numberDone = optional || done;
     final badgeText = optional ? 'OPTIONAL' : (done ? 'DONE' : 'REQUIRED');
     final badgeTinted = done && !optional;
@@ -39,12 +41,10 @@ class StepCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 11),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: tinted ? const Color(0xFFFDF9EE) : Colors.white,
-        border: Border.all(color: tinted ? const Color(0xFFF0DFA8) : Colors.black.withValues(alpha: 0.07)),
+        color: tinted ? colors.neutralTint : colors.surface,
+        border: Border.all(color: tinted ? colors.neutralTintBorder : colors.surfaceBorder),
         borderRadius: BorderRadius.circular(14),
-        boxShadow: tinted
-            ? null
-            : [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 2, offset: const Offset(0, 1))],
+        boxShadow: tinted ? null : [BoxShadow(color: colors.cardShadow, blurRadius: 2, offset: const Offset(0, 1))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -71,7 +71,7 @@ class StepCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: badgeTinted ? AppColors.successBg : Colors.black.withValues(alpha: 0.05),
+                  color: badgeTinted ? colors.successBg : colors.hairline,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -80,7 +80,7 @@ class StepCard extends StatelessWidget {
                     fontSize: 9.5,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.4,
-                    color: badgeTinted ? AppColors.success : AppColors.textFaint,
+                    color: badgeTinted ? colors.success : colors.textFaint,
                   ),
                 ),
               ),

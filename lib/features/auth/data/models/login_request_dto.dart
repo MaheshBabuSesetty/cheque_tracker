@@ -9,7 +9,7 @@ part 'login_request_dto.g.dart';
 @freezed
 abstract class LoginRequestDto with _$LoginRequestDto {
   const factory LoginRequestDto({
-    required String agentId,
+    required String username,
     required String password,
   }) = _LoginRequestDto;
 

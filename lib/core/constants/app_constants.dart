@@ -16,11 +16,4 @@ class AppConstants {
   static const String prefsAuthTokenKey = 'auth_token';
   static const String prefsUserIdKey = 'auth_user_id';
   static const String prefsThemeModeKey = 'theme_mode';
-
-  /// Demo field-agent credentials, matching the approved design's
-  /// "Use demo agent" quick-fill. Shared between the login screen (which
-  /// fills the fields) and [MockAuthRemoteDataSource] (which accepts them)
-  /// so there's one source of truth until a real backend is wired in.
-  static const String demoAgentId = 'agent.rashid';
-  static const String demoAgentPassword = 'agent123';
 }

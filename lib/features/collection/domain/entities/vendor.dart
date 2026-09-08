@@ -8,11 +8,13 @@ class Vendor extends Equatable {
   final String id;
   final String name;
 
-  /// Vendor master code, e.g. "VND-0114".
-  final String code;
+  /// Vendor master code, e.g. "VND-0114". Xpedeon/OneDB-sourced — `null`
+  /// for every vendor until a future vendor sync (not an error state).
+  final String? code;
 
-  /// UAE Tax Registration Number.
-  final String trn;
+  /// UAE Tax Registration Number. Xpedeon/OneDB-sourced — `null` for every
+  /// vendor until a future vendor sync (not an error state).
+  final String? trn;
 
   @override
   List<Object?> get props => [id, name, code, trn];

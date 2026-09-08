@@ -1,29 +1,48 @@
-import '../../domain/entities/vendor.dart';
+import 'dart:convert';
 
-/// The vendor master is static seed data here — no serialization needed,
-/// so unlike collections there's no `VendorModel`; this returns [Vendor]
-/// entities directly. A real implementation would instead sync this list
-/// from the web application.
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../domain/entities/vendor.dart';
+import '../models/vendor_model.dart';
+
+/// Caches the vendor master list on-device so the vendor picker (step 1 of
+/// a collection) still works offline after the first sync, rather than
+/// requiring a live `GET /vendors/available-for-collection` every time it's
+/// opened — mirrors the JSON-in-`SharedPreferences` convention used
+/// elsewhere in this app (see `AuthLocalDataSource`), just at the list
+/// level instead of a single object.
 abstract class VendorLocalDataSource {
-  Future<List<Vendor>> getVendors();
+  /// Empty list if nothing has been cached yet — never `null`, since "no
+  /// vendors cached" isn't an error state, just an unsynced one.
+  Future<List<VendorModel>> getCachedVendors();
+
+  Future<void> cacheVendors(List<Vendor> vendors);
 }
 
 class VendorLocalDataSourceImpl implements VendorLocalDataSource {
-  static final _vendors = [
-    const Vendor(id: 'v1', name: 'Al Falah Building Materials LLC', code: 'VND-0114', trn: '100234567800003'),
-    const Vendor(id: 'v2', name: 'Gulf Steel Trading Co.', code: 'VND-0127', trn: '100298871200003'),
-    const Vendor(id: 'v3', name: 'Continental MEP Contracting', code: 'VND-0141', trn: '100377419900003'),
-    const Vendor(id: 'v4', name: 'Al Reem Facilities Services', code: 'VND-0158', trn: '100411203400003'),
-    const Vendor(id: 'v5', name: 'Skyline Aluminium & Glass', code: 'VND-0163', trn: '100455620100003'),
-    const Vendor(id: 'v6', name: 'Desert Rose Interiors', code: 'VND-0172', trn: '100488102900003'),
-    const Vendor(id: 'v7', name: 'Falcon Pumps & Valves', code: 'VND-0189', trn: '100512338700003'),
-    const Vendor(id: 'v8', name: 'Emirates Scaffolding LLC', code: 'VND-0194', trn: '100566419200003'),
-    const Vendor(id: 'v9', name: 'Precision Formwork Systems', code: 'VND-0208', trn: '100601277300003'),
-    const Vendor(id: 'v10', name: 'Bin Yousef Trading', code: 'VND-0219', trn: '100644901500003'),
-    const Vendor(id: 'v11', name: 'Al Ameen Concrete Products', code: 'VND-0226', trn: '100678224400003'),
-    const Vendor(id: 'v12', name: 'Meydan Landscaping LLC', code: 'VND-0233', trn: '100712889000003'),
-  ];
+  const VendorLocalDataSourceImpl(this._prefs);
+
+  static const _storageKey = 'vendor_master_v1';
+
+  final SharedPreferences _prefs;
 
   @override
-  Future<List<Vendor>> getVendors() async => _vendors;
+  Future<List<VendorModel>> getCachedVendors() async {
+    final raw = _prefs.getString(_storageKey);
+    if (raw == null) return [];
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded.map((json) => VendorModel.fromJson(json as Map<String, dynamic>)).toList();
+    } on FormatException {
+      return [];
+    }
+  }
+
+  @override
+  Future<void> cacheVendors(List<Vendor> vendors) async {
+    final encoded = jsonEncode(
+      vendors.map((v) => VendorModel(id: v.id, name: v.name, code: v.code, trn: v.trn).toJson()).toList(),
+    );
+    await _prefs.setString(_storageKey, encoded);
+  }
 }

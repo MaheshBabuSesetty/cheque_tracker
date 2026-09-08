@@ -1,92 +1,85 @@
 import 'package:equatable/equatable.dart';
 
-enum CollectionStatus {
-  synced,
-  pending;
+import 'collection_attachment.dart';
 
-  String get label => switch (this) { CollectionStatus.synced => 'Synced', CollectionStatus.pending => 'Pending' };
-}
-
-/// A submitted cheque collection — the record shown in the transactions
-/// list/detail and, eventually, pushed to the web application tracker.
+/// A recorded cheque collection, in the full shape returned by
+/// `POST /cheques/{chequeId}/collection` (on success) and
+/// `GET /collections/{chequeId}` — every instance that exists client-side
+/// came from a real server round trip (there is no offline queue yet, see
+/// the API integration plan's "known gaps"), so unlike the old mock-era
+/// model there's no separate synced/pending status to track.
 ///
-/// Image fields are on-device file paths (populated by `ImageCaptureService`
-/// and the signature pad), not raw bytes — keeps records small to persist
-/// and mirrors how a real mobile app would reference captured media.
+/// Every `*Url` field is a **relative** API path, not a local file path —
+/// fetch it with the authenticated Dio client (see
+/// `AuthenticatedNetworkImage`), never `Image.file`.
 class CollectionRecord extends Equatable {
   const CollectionRecord({
     required this.id,
-    required this.ref,
-    required this.vendorName,
-    required this.repName,
-    required this.repMobile,
-    required this.emiratesId,
-    required this.nationality,
-    required this.expiry,
+    required this.chequeId,
     required this.chequeNumber,
+    required this.vendorName,
     required this.amount,
-    this.currency = 'AED',
-    required this.status,
+    required this.repName,
     required this.timestamp,
-    this.repPhotoPath,
-    this.idFrontPath,
-    this.idBackPath,
-    this.chequeCopyPath,
-    this.signaturePath,
-    this.voucherPath,
-    this.supportingDocPaths = const [],
+    this.currency = 'AED',
+    this.repMobile = '',
+    this.emiratesId = '',
+    this.collectorPhotoUrl,
+    this.idFrontUrl,
+    this.idBackUrl,
+    this.chequePhotoUrl,
+    this.signatureUrl,
+    this.voucherUrl,
+    this.supportingDocuments = const [],
+    this.newChequeStatus,
   });
 
   final String id;
-  final String ref;
+  final String chequeId;
+  final String chequeNumber;
   final String vendorName;
+  final double amount;
+
+  /// Every cheque is implicitly AED — there is no `currency` field on the
+  /// wire, so this is always `'AED'`.
+  final String currency;
+
   final String repName;
   final String repMobile;
   final String emiratesId;
-  final String nationality;
-  final String expiry;
-  final String chequeNumber;
-  final double amount;
+  final String? collectorPhotoUrl;
+  final String? idFrontUrl;
+  final String? idBackUrl;
+  final String? chequePhotoUrl;
+  final String? signatureUrl;
+  final String? voucherUrl;
+  final List<CollectionAttachment> supportingDocuments;
 
-  /// Only 'AED' or 'USD' — anything else is rejected before submission
-  /// (see `ChequeScan.accepted`).
-  final String currency;
-  final CollectionStatus status;
   final DateTime timestamp;
 
-  final String? repPhotoPath;
-  final String? idFrontPath;
-  final String? idBackPath;
-  final String? chequeCopyPath;
-  final String? signaturePath;
-
-  /// Optional payment voucher photo and any extra supporting documents
-  /// (invoices, delivery notes, …) attached from the optional step 5 —
-  /// both may be absent since neither is required to submit.
-  final String? voucherPath;
-  final List<String> supportingDocPaths;
+  /// The cheque's status right after this submission — `'ISSUED'` on a
+  /// normal successful collection.
+  final String? newChequeStatus;
 
   @override
   List<Object?> get props => [
         id,
-        ref,
+        chequeId,
+        chequeNumber,
         vendorName,
+        amount,
+        currency,
         repName,
         repMobile,
         emiratesId,
-        nationality,
-        expiry,
-        chequeNumber,
-        amount,
-        currency,
-        status,
+        collectorPhotoUrl,
+        idFrontUrl,
+        idBackUrl,
+        chequePhotoUrl,
+        signatureUrl,
+        voucherUrl,
+        supportingDocuments,
         timestamp,
-        repPhotoPath,
-        idFrontPath,
-        idBackPath,
-        chequeCopyPath,
-        signaturePath,
-        voucherPath,
-        supportingDocPaths,
+        newChequeStatus,
       ];
 }

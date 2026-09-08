@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$LoginRequestDto {
 
- String get agentId; String get password;
+ String get username; String get password;
 /// Create a copy of LoginRequestDto
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $LoginRequestDtoCopyWith<LoginRequestDto> get copyWith => _$LoginRequestDtoCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LoginRequestDto&&(identical(other.agentId, agentId) || other.agentId == agentId)&&(identical(other.password, password) || other.password == password));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LoginRequestDto&&(identical(other.username, username) || other.username == username)&&(identical(other.password, password) || other.password == password));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,agentId,password);
+int get hashCode => Object.hash(runtimeType,username,password);
 
 @override
 String toString() {
-  return 'LoginRequestDto(agentId: $agentId, password: $password)';
+  return 'LoginRequestDto(username: $username, password: $password)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $LoginRequestDtoCopyWith<$Res>  {
   factory $LoginRequestDtoCopyWith(LoginRequestDto value, $Res Function(LoginRequestDto) _then) = _$LoginRequestDtoCopyWithImpl;
 @useResult
 $Res call({
- String agentId, String password
+ String username, String password
 });
 
 
@@ -65,9 +65,9 @@ class _$LoginRequestDtoCopyWithImpl<$Res>
 
 /// Create a copy of LoginRequestDto
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? agentId = null,Object? password = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? username = null,Object? password = null,}) {
   return _then(_self.copyWith(
-agentId: null == agentId ? _self.agentId : agentId // ignore: cast_nullable_to_non_nullable
+username: null == username ? _self.username : username // ignore: cast_nullable_to_non_nullable
 as String,password: null == password ? _self.password : password // ignore: cast_nullable_to_non_nullable
 as String,
   ));
@@ -154,10 +154,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String agentId,  String password)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String username,  String password)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _LoginRequestDto() when $default != null:
-return $default(_that.agentId,_that.password);case _:
+return $default(_that.username,_that.password);case _:
   return orElse();
 
 }
@@ -175,10 +175,10 @@ return $default(_that.agentId,_that.password);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String agentId,  String password)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String username,  String password)  $default,) {final _that = this;
 switch (_that) {
 case _LoginRequestDto():
-return $default(_that.agentId,_that.password);case _:
+return $default(_that.username,_that.password);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -195,10 +195,10 @@ return $default(_that.agentId,_that.password);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String agentId,  String password)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String username,  String password)?  $default,) {final _that = this;
 switch (_that) {
 case _LoginRequestDto() when $default != null:
-return $default(_that.agentId,_that.password);case _:
+return $default(_that.username,_that.password);case _:
   return null;
 
 }
@@ -210,10 +210,10 @@ return $default(_that.agentId,_that.password);case _:
 @JsonSerializable()
 
 class _LoginRequestDto implements LoginRequestDto {
-  const _LoginRequestDto({required this.agentId, required this.password});
+  const _LoginRequestDto({required this.username, required this.password});
   factory _LoginRequestDto.fromJson(Map<String, dynamic> json) => _$LoginRequestDtoFromJson(json);
 
-@override final  String agentId;
+@override final  String username;
 @override final  String password;
 
 /// Create a copy of LoginRequestDto
@@ -229,16 +229,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LoginRequestDto&&(identical(other.agentId, agentId) || other.agentId == agentId)&&(identical(other.password, password) || other.password == password));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LoginRequestDto&&(identical(other.username, username) || other.username == username)&&(identical(other.password, password) || other.password == password));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,agentId,password);
+int get hashCode => Object.hash(runtimeType,username,password);
 
 @override
 String toString() {
-  return 'LoginRequestDto(agentId: $agentId, password: $password)';
+  return 'LoginRequestDto(username: $username, password: $password)';
 }
 
 
@@ -249,7 +249,7 @@ abstract mixin class _$LoginRequestDtoCopyWith<$Res> implements $LoginRequestDto
   factory _$LoginRequestDtoCopyWith(_LoginRequestDto value, $Res Function(_LoginRequestDto) _then) = __$LoginRequestDtoCopyWithImpl;
 @override @useResult
 $Res call({
- String agentId, String password
+ String username, String password
 });
 
 
@@ -266,9 +266,9 @@ class __$LoginRequestDtoCopyWithImpl<$Res>
 
 /// Create a copy of LoginRequestDto
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? agentId = null,Object? password = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? username = null,Object? password = null,}) {
   return _then(_LoginRequestDto(
-agentId: null == agentId ? _self.agentId : agentId // ignore: cast_nullable_to_non_nullable
+username: null == username ? _self.username : username // ignore: cast_nullable_to_non_nullable
 as String,password: null == password ? _self.password : password // ignore: cast_nullable_to_non_nullable
 as String,
   ));

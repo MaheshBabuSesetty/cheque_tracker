@@ -1,4 +1,4 @@
-import '../entities/collection_record.dart';
+import '../entities/collection_summary.dart';
 import '../repositories/collection_repository.dart';
 
 class GetCollections {
@@ -6,5 +6,5 @@ class GetCollections {
 
   final CollectionRepository _repository;
 
-  Future<List<CollectionRecord>> call() => _repository.getAll();
+  Future<List<CollectionSummary>> call() => _repository.getAll();
 }

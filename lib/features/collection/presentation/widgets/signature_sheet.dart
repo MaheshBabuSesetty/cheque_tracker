@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/theme_extensions.dart';
 import '../../../../core/widgets/app_primary_button.dart';
+import '../../../../core/widgets/responsive_content.dart';
 import 'signature_pad.dart';
 
 /// Modal signature capture, opened from step 6's "Tap to sign" tile. Owns
@@ -18,6 +20,8 @@ class SignatureSheet extends StatefulWidget {
     return showModalBottomSheet<Uint8List>(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (_) => const SignatureSheet(),
     );
@@ -40,96 +44,150 @@ class _SignatureSheetState extends State<SignatureSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.semanticColors;
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SafeArea(
         top: false,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: AppColors.cream,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text('Signature', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 17.5)),
-              const SizedBox(height: 3),
-              const Text(
-                'Have the representative sign below.',
-                style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 13),
-              Container(
-                height: 220,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black.withValues(alpha: 0.22)),
-                  borderRadius: BorderRadius.circular(12),
-                  color: const Color(0xFFFBFAF6),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Stack(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.9,
+          child: Container(
+            decoration: BoxDecoration(
+              color: colors.pageBackground,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+            child: ResponsiveContent(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      SignaturePad(controller: _controller, onChanged: _onChanged),
-                      if (!_hasInk)
-                        const Positioned.fill(
-                          child: IgnorePointer(
-                            child: Center(
-                              child: Text('Sign here with your finger', style: TextStyle(color: AppColors.textFaint, fontSize: 12.5)),
-                            ),
+                      const Spacer(),
+                      Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: colors.dashedBorder,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            tooltip: 'Cancel',
+                            icon: Icon(Icons.close, size: 20, color: colors.textMuted),
+                            onPressed: () => Navigator.of(context).pop(),
                           ),
                         ),
+                      ),
                     ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 9),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: _hasInk
-                        ? () => setState(() {
-                              _controller.undo();
-                              _hasInk = _controller.hasInk;
-                            })
-                        : null,
-                    style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
-                    child: const Text('Undo stroke', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF3A4552))),
+                  Text(
+                    'Signature',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.copyWith(fontSize: 17.5),
                   ),
-                  const SizedBox(width: 14),
-                  TextButton(
-                    onPressed: _hasInk
-                        ? () => setState(() {
-                              _controller.clear();
-                              _hasInk = _controller.hasInk;
-                            })
-                        : null,
-                    style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
-                    child: const Text('Clear', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.danger)),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Have the representative sign below.',
+                    style: TextStyle(fontSize: 11.5, color: colors.textMuted),
+                  ),
+                  const SizedBox(height: 13),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: colors.dashedBorder),
+                        borderRadius: BorderRadius.circular(12),
+                        color: colors.placeholderBg,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Stack(
+                          children: [
+                            SignaturePad(
+                              controller: _controller,
+                              onChanged: _onChanged,
+                            ),
+                            if (!_hasInk)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: Center(
+                                    child: Text(
+                                      'Sign here with your finger',
+                                      style: TextStyle(
+                                        color: colors.textFaint,
+                                        fontSize: 12.5,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: _hasInk
+                            ? () => setState(() {
+                                _controller.undo();
+                                _hasInk = _controller.hasInk;
+                              })
+                            : null,
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                        ),
+                        child: Text(
+                          'Undo stroke',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: colors.bodyText,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      TextButton(
+                        onPressed: _hasInk
+                            ? () => setState(() {
+                                _controller.clear();
+                                _hasInk = _controller.hasInk;
+                              })
+                            : null,
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                        ),
+                        child: Text(
+                          'Clear',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: colors.danger,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 15),
+                  AppPrimaryButton(
+                    label: 'Use signature',
+                    onPressed: _hasInk ? _useSignature : null,
+                    backgroundColor: AppColors.gold,
+                    foregroundColor: Colors.black,
                   ),
                 ],
               ),
-              const SizedBox(height: 15),
-              AppPrimaryButton(
-                label: 'Use signature',
-                onPressed: _hasInk ? _useSignature : null,
-                backgroundColor: AppColors.gold,
-                foregroundColor: Colors.black,
-              ),
-            ],
+            ),
           ),
         ),
       ),
