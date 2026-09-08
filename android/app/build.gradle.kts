@@ -19,7 +19,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.latinem.cheque_tracker"
+    namespace = "com.sobha.chequetracker"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -34,7 +34,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.latinem.cheque_tracker"
+        applicationId = "com.sobha.chequetracker"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -42,9 +42,9 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         // flutter_appauth's redirect-URI receiver activity — must match
-        // AzureAdConfig.redirectUri's scheme (com.latinem.cheque_tracker://...)
+        // AzureAdConfig.redirectUri's scheme (com.sobha.chequetracker://...)
         // and the platform registered on the Entra ID app registration.
-        manifestPlaceholders["appAuthRedirectScheme"] = "com.latinem.cheque_tracker"
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.sobha.chequetracker"
     }
 
     signingConfigs {

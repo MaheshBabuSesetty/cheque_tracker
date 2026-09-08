@@ -1,4 +1,4 @@
-package com.latinem.cheque_tracker
+package com.sobha.chequetracker
 
 import android.os.Bundle
 import android.view.WindowManager

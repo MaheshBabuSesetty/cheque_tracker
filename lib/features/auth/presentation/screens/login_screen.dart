@@ -8,9 +8,13 @@ import '../../../../core/routing/route_names.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_extensions.dart';
 import '../../../../core/utils/extensions/context_extensions.dart';
-import '../../../../core/utils/validators.dart';
+// Username/password sign-in is disabled — see the commented-out fields in
+// build(). `Validators` and `LabeledTextField` are used by nothing else in
+// this file, so their imports are commented out alongside them rather than
+// left dangling for the analyzer.
+// import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_primary_button.dart';
-import '../../../../core/widgets/labeled_text_field.dart';
+// import '../../../../core/widgets/labeled_text_field.dart';
 import '../../../../core/widgets/responsive_content.dart';
 import '../../../../core/widgets/sobha_wordmark.dart';
 import '../../../../services/version_check_service.dart';
@@ -26,9 +30,11 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+  // The controllers (and their dispose() calls below) are kept so that
+  // restoring username/password sign-in is a pure uncomment.
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _obscurePassword = true;
+  // bool _obscurePassword = true;
   // ignore: prefer_final_fields
   bool _rememberDevice = true;
 
@@ -39,18 +45,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-    ref
-        .read(authProvider.notifier)
-        .login(
-          username: _usernameController.text.trim(),
-          password: _passwordController.text,
-          rememberDevice: _rememberDevice,
-        );
-  }
+  // Password sign-in disabled — SSO is the only path on this screen for now.
+  // `AuthNotifier.login` and the DEV `POST /auth/login` behind it are
+  // untouched; this is a UI-level disable, restored by uncommenting this
+  // method, the two fields, and the "Sign in" button in build().
+  // void _submit() {
+  //   if (!_formKey.currentState!.validate()) return;
+  //   ref
+  //       .read(authProvider.notifier)
+  //       .login(
+  //         username: _usernameController.text.trim(),
+  //         password: _passwordController.text,
+  //         rememberDevice: _rememberDevice,
+  //       );
+  // }
 
-  // ignore: unused_element
   void _submitSso() {
     ref.read(authProvider.notifier).loginWithSso(rememberDevice: _rememberDevice);
   }
@@ -122,7 +131,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
             ),
-            Expanded(
+Expanded(
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -136,140 +145,205 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Column(
                     children: [
                       Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(22, 26, 22, 12),
-                          child: Form(
-                            key: _formKey,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Sign in',
-                                  style: Theme.of(context).textTheme.titleLarge
-                                      ?.copyWith(fontSize: 19),
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  'Use the field agent credentials issued with the web account.',
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: colors.textMuted,
+                        // A LayoutBuilder + minHeight-constrained Center is the
+                        // standard way to center content that's shorter than
+                        // the viewport while still letting it scroll if it
+                        // ever isn't (a long errorMessage, a small landscape
+                        // screen). With only one action left on this screen
+                        // (see comment on _MicrosoftSignInButton below), the
+                        // old top-aligned layout left most of this sheet an
+                        // empty cream void under a lonely button.
+                        child: LayoutBuilder(
+                          builder: (context, constraints) => SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(28, 24, 28, 12),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                              child: Center(
+                                child: Form(
+                                  key: _formKey,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      // A quiet visual anchor for the section —
+                                      // not a repeat of the wordmark above,
+                                      // just enough presence that "Sign in"
+                                      // doesn't read as a stray heading in the
+                                      // middle of an empty page.
+                                      Container(
+                                        width: 56,
+                                        height: 56,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.gold.withValues(alpha: 0.1),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: AppColors.gold.withValues(alpha: 0.3),
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.badge_outlined,
+                                          color: AppColors.gold,
+                                          size: 26,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      Text(
+                                        'Sign in',
+                                        textAlign: TextAlign.center,
+                                        style: Theme.of(context).textTheme.titleLarge
+                                            ?.copyWith(fontSize: 20),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      // Was 'Use the field agent credentials issued
+                                      // with the web account.' — restore that string
+                                      // together with the two fields below.
+                                      Text(
+                                        'Sign in with your Sobha Microsoft account.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          color: colors.textMuted,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 32),
+                                      // Username/password fields disabled — commented
+                                      // out for reuse later, same as the "Remember
+                                      // this device" checkbox below. The enclosing
+                                      // Form/_formKey is left in place so these come
+                                      // back by uncommenting alone.
+                                      // LabeledTextField(
+                                      //   label: 'USERNAME',
+                                      //   controller: _usernameController,
+                                      //   hintText: 'e.g. agent.smith',
+                                      //   validator: (v) => Validators.notEmpty(
+                                      //     v,
+                                      //     fieldName: 'Username',
+                                      //   ),
+                                      // ),
+                                      // const SizedBox(height: 13),
+                                      // LabeledTextField(
+                                      //   label: 'PASSWORD',
+                                      //   controller: _passwordController,
+                                      //   obscureText: _obscurePassword,
+                                      //   hintText: '••••••••',
+                                      //   validator: Validators.password,
+                                      //   suffixIcon: IconButton(
+                                      //     icon: Icon(
+                                      //       _obscurePassword
+                                      //           ? Icons.visibility_off
+                                      //           : Icons.visibility,
+                                      //       color: colors.textMuted,
+                                      //       size: 20,
+                                      //     ),
+                                      //     onPressed: () => setState(
+                                      //       () =>
+                                      //           _obscurePassword = !_obscurePassword,
+                                      //     ),
+                                      //   ),
+                                      // ),
+                                      // "Remember this device" checkbox disabled —
+                                      // commented out for reuse later. _rememberDevice
+                                      // stays true by default.
+                                      // InkWell(
+                                      //   onTap: () => setState(
+                                      //     () => _rememberDevice = !_rememberDevice,
+                                      //   ),
+                                      //   borderRadius: BorderRadius.circular(6),
+                                      //   child: Padding(
+                                      //     padding: const EdgeInsets.symmetric(vertical: 4),
+                                      //     child: Row(
+                                      //       mainAxisSize: MainAxisSize.min,
+                                      //       children: [
+                                      //         SizedBox(
+                                      //           width: 20,
+                                      //           height: 20,
+                                      //           child: Checkbox(
+                                      //             value: _rememberDevice,
+                                      //             onChanged: (value) => setState(
+                                      //               () => _rememberDevice = value ?? true,
+                                      //             ),
+                                      //             visualDensity: VisualDensity.compact,
+                                      //             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      //             activeColor: AppColors.gold,
+                                      //           ),
+                                      //         ),
+                                      //         const SizedBox(width: 8),
+                                      //         Text(
+                                      //           'Remember this device',
+                                      //           style: TextStyle(
+                                      //             fontSize: 12,
+                                      //             color: colors.textMuted,
+                                      //           ),
+                                      //         ),
+                                      //       ],
+                                      //     ),
+                                      //   ),
+                                      // ),
+                                      // const SizedBox(height: 10),
+                                      // The gold "Sign in" primary button, and the
+                                      // "OR" divider that separated it from SSO —
+                                      // both commented out with the fields above.
+                                      // With one sign-in path left, Microsoft is now
+                                      // the primary (and only) CTA on this screen.
+                                      // AppPrimaryButton(
+                                      //   label: 'Sign in',
+                                      //   isLoading: isLoading,
+                                      //   onPressed: _submit,
+                                      //   backgroundColor: AppColors.gold,
+                                      //   foregroundColor: Colors.black,
+                                      // ),
+                                      // const SizedBox(height: 18),
+                                      // Row(
+                                      //   children: [
+                                      //     Expanded(child: Divider(color: colors.hairline)),
+                                      //     Padding(
+                                      //       padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      //       child: Text(
+                                      //         'OR',
+                                      //         style: TextStyle(
+                                      //           fontSize: 10.5,
+                                      //           fontWeight: FontWeight.w700,
+                                      //           letterSpacing: 0.6,
+                                      //           color: colors.textFaint,
+                                      //         ),
+                                      //       ),
+                                      //     ),
+                                      //     Expanded(child: Divider(color: colors.hairline)),
+                                      //   ],
+                                      // ),
+                                      // const SizedBox(height: 18),
+                                      _MicrosoftSignInButton(
+                                        isLoading: isLoading,
+                                        onPressed: _submitSso,
+                                      ),
+                                      if (errorMessage != null) ...[
+                                        const SizedBox(height: 14),
+                                        Text(
+                                          errorMessage,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: colors.danger,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 28),
+                                      // A quiet fallback for the one case the
+                                      // Microsoft button can't self-explain —
+                                      // see AzureAdSsoService's AuthException
+                                      // copy for what actually points an agent
+                                      // here (a CA/MDM policy this OIDC client
+                                      // structurally can't satisfy).
+                                      Text(
+                                        'Trouble signing in? Contact IT support.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(fontSize: 11, color: colors.textFaint),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 20),
-                                LabeledTextField(
-                                  label: 'USERNAME',
-                                  controller: _usernameController,
-                                  hintText: 'e.g. agent.smith',
-                                  validator: (v) => Validators.notEmpty(
-                                    v,
-                                    fieldName: 'Username',
-                                  ),
-                                ),
-                                const SizedBox(height: 13),
-                                LabeledTextField(
-                                  label: 'PASSWORD',
-                                  controller: _passwordController,
-                                  obscureText: _obscurePassword,
-                                  hintText: '••••••••',
-                                  validator: Validators.password,
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                      color: colors.textMuted,
-                                      size: 20,
-                                    ),
-                                    onPressed: () => setState(
-                                      () =>
-                                          _obscurePassword = !_obscurePassword,
-                                    ),
-                                  ),
-                                ),
-                                if (errorMessage != null) ...[
-                                  const SizedBox(height: 9),
-                                  Text(
-                                    errorMessage,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: colors.danger,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                                // "Remember this device" checkbox disabled — commented out
-                                // for reuse later. _rememberDevice stays true by default.
-                                // const SizedBox(height: 10),
-                                // InkWell(
-                                //   onTap: () => setState(
-                                //     () => _rememberDevice = !_rememberDevice,
-                                //   ),
-                                //   borderRadius: BorderRadius.circular(6),
-                                //   child: Padding(
-                                //     padding: const EdgeInsets.symmetric(vertical: 4),
-                                //     child: Row(
-                                //       mainAxisSize: MainAxisSize.min,
-                                //       children: [
-                                //         SizedBox(
-                                //           width: 20,
-                                //           height: 20,
-                                //           child: Checkbox(
-                                //             value: _rememberDevice,
-                                //             onChanged: (value) => setState(
-                                //               () => _rememberDevice = value ?? true,
-                                //             ),
-                                //             visualDensity: VisualDensity.compact,
-                                //             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                //             activeColor: AppColors.gold,
-                                //           ),
-                                //         ),
-                                //         const SizedBox(width: 8),
-                                //         Text(
-                                //           'Remember this device',
-                                //           style: TextStyle(
-                                //             fontSize: 12,
-                                //             color: colors.textMuted,
-                                //           ),
-                                //         ),
-                                //       ],
-                                //     ),
-                                //   ),
-                                // ),
-                                const SizedBox(height: 10),
-                                AppPrimaryButton(
-                                  label: 'Sign in',
-                                  isLoading: isLoading,
-                                  onPressed: _submit,
-                                  backgroundColor: AppColors.gold,
-                                  foregroundColor: Colors.black,
-                                ),
-                                // SSO sign-in disabled — commented out for reuse later.
-                                // const SizedBox(height: 18),
-                                // Row(
-                                //   children: [
-                                //     Expanded(child: Divider(color: colors.hairline)),
-                                //     Padding(
-                                //       padding: const EdgeInsets.symmetric(horizontal: 10),
-                                //       child: Text(
-                                //         'OR',
-                                //         style: TextStyle(
-                                //           fontSize: 10.5,
-                                //           fontWeight: FontWeight.w700,
-                                //           letterSpacing: 0.6,
-                                //           color: colors.textFaint,
-                                //         ),
-                                //       ),
-                                //     ),
-                                //     Expanded(child: Divider(color: colors.hairline)),
-                                //   ],
-                                // ),
-                                // const SizedBox(height: 18),
-                                // _MicrosoftSignInButton(
-                                //   isLoading: isLoading,
-                                //   onPressed: _submitSso,
-                                // ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -282,8 +356,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ),
               ),
-            ),
-          ],
+            ),          ],
         ),
       ),
     );
@@ -295,7 +368,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 /// primary button so it reads as an alternate path, not a second primary
 /// CTA. The four-square mark is drawn directly (official brand colors,
 /// no asset/font needed) rather than fetched or rasterized.
-// ignore: unused_element
 class _MicrosoftSignInButton extends StatelessWidget {
   const _MicrosoftSignInButton({required this.isLoading, required this.onPressed});
 

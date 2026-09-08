@@ -13,7 +13,7 @@
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<!-- flutter_appauth's SSO redirect — must match AzureAdConfig.redirectUri's
-	     scheme (com.latinem.cheque_tracker://...) and the platform registered
+	     scheme (com.sobha.chequetracker://...) and the platform registered
 	     on the Entra ID app registration. -->
 	<key>CFBundleURLTypes</key>
 	<array>
@@ -22,7 +22,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.latinem.cheque_tracker</string>
+				<string>com.sobha.chequetracker</string>
 			</array>
 		</dict>
 	</array>

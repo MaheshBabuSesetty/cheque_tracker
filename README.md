@@ -127,15 +127,17 @@ The login screen's "Sign in with Microsoft" button (`LoginScreen`/`AuthNotifier.
 
 1. **An Entra ID app registration** (single-tenant, native/public client) with a **"Mobile and desktop applications" platform** redirect URI of:
    ```
-   com.latinem.cheque_tracker://oauthredirect
+   com.sobha.chequetracker://oauthredirect
    ```
    Then fill in the real values in `.env`, replacing the `REPLACE_WITH_*` placeholders:
    ```
    AZURE_AD_TENANT_ID=<tenant id>
    AZURE_AD_CLIENT_ID=<client id>
    ```
-   (`AZURE_AD_REDIRECT_URI` only needs to change if the app's bundle ID / applicationId ever changes — it's derived from `com.latinem.cheque_tracker`, already wired into `android/app/build.gradle.kts`'s `appAuthRedirectScheme` placeholder and `ios/Runner/Info.plist`'s `CFBundleURLTypes`.)
+   (`AZURE_AD_REDIRECT_URI` only needs to change if the app's bundle ID / applicationId ever changes — it's derived from `com.sobha.chequetracker`, already wired into `android/app/build.gradle.kts`'s `appAuthRedirectScheme` placeholder and `ios/Runner/Info.plist`'s `CFBundleURLTypes`.)
 2. **A backend `POST /auth/sso` endpoint** that accepts `{ idToken, provider }`, verifies the token against Entra ID's public keys/issuer, and returns the same session shape `POST /auth/login` does. See `AuthRemoteDataSource.loginWithSso`'s doc comment for the exact contract. This endpoint doesn't exist yet — until it does, tapping "Sign in with Microsoft" will complete the real Microsoft sign-in but fail on the token-exchange call.
+
+**Known limitation**: `flutter_appauth` (the OIDC client this uses) is a generic client with no way to participate in Microsoft's proprietary broker handoff. On a device with Microsoft Authenticator or Intune Company Portal installed, if the tenant's Conditional Access policy requires broker-based sign-in for native/mobile apps, `AzureAdSsoService.signIn` hangs indefinitely (no success, no error, no timeout — confirmed via live device testing). This was previously worked around by switching to `msal_auth` (Microsoft's own MSAL SDK wrapper), then reverted back to `flutter_appauth`. If that hang reappears, `msal_auth` is the known fix — see `AzureAdSsoService`'s doc comment and git history around that migration for the exact native setup it needs (Info.plist/entitlements/AndroidManifest changes, a bumped iOS 16+ deployment target, and Android/iOS platform registrations in Entra ID).
 
 Architecture-wise, the whole SSO flow follows the same pattern the rest of the app uses for swappable integrations (`EmiratesIdOcrService`, `ChequeOcrService`, `ImageCaptureService`): `SsoAuthService` is the abstract contract (`domain/repositories/sso_auth_service.dart`), `AzureAdSsoService` (`data/datasources/azure_ad_sso_data_source.dart`) is the one concrete implementation today. Adding a second provider (Google, Okta, ...) means a new class behind that same interface, not a change to `AuthRepository`/`AuthNotifier`/`LoginScreen`.
 

@@ -3,9 +3,8 @@
 /// single app registration shared across dev/UAT/prod rather than one
 /// value per environment (see `.env`'s comment on why).
 ///
-/// The three defaults below are placeholders, not real Entra ID values —
-/// SSO sign-in will fail until IT/identity registers a native-app
-/// registration and `.env` is updated with the real tenant/client IDs.
+/// `tenantId`/`clientId` default to placeholders below only if `.env` isn't
+/// passed via `--dart-define-from-file` — see [isConfigured].
 class AzureAdConfig {
   const AzureAdConfig._();
 
@@ -15,7 +14,7 @@ class AzureAdConfig {
 
   static const String redirectUri = String.fromEnvironment(
     'AZURE_AD_REDIRECT_URI',
-    defaultValue: 'com.latinem.cheque_tracker://oauthredirect',
+    defaultValue: 'com.sobha.chequetracker://oauthredirect',
   );
 
   static String get discoveryUrl => 'https://login.microsoftonline.com/$tenantId/v2.0/.well-known/openid-configuration';

@@ -111,30 +111,46 @@ class TransactionsScreen extends ConsumerWidget {
         ),
         Expanded(
           child: ResponsiveContent(
-            child: collectionsAsync.isLoading && all.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : filtered.isEmpty
-                ? Center(
-                    child: Text(
-                      'Nothing matches this filter.',
-                      style: TextStyle(color: colors.textFaint, fontSize: 12.5),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(15, 14, 15, 8),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final record = filtered[index];
-                      return _TransactionRow(
-                        record: record,
-                        onTap: () => Navigator.of(context).pushNamed(
-                          RouteNames.collectionDetail,
-                          arguments: record.chequeId,
+            child: RefreshIndicator(
+              onRefresh: () => ref.refresh(collectionsProvider.future),
+              child: collectionsAsync.isLoading && all.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(height: 160),
+                        Center(child: CircularProgressIndicator()),
+                      ],
+                    )
+                  : filtered.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        const SizedBox(height: 160),
+                        Center(
+                          child: Text(
+                            'Nothing matches this filter.',
+                            style: TextStyle(color: colors.textFaint, fontSize: 12.5),
+                          ),
                         ),
-                      );
-                    },
-                  ),
+                      ],
+                    )
+                  : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(15, 14, 15, 8),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final record = filtered[index];
+                        return _TransactionRow(
+                          record: record,
+                          onTap: () => Navigator.of(context).pushNamed(
+                            RouteNames.collectionDetail,
+                            arguments: record.chequeId,
+                          ),
+                        );
+                      },
+                    ),
+            ),
           ),
         ),
       ],

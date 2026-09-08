@@ -8,7 +8,7 @@
 PRODUCT_NAME = cheque_tracker
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.latinem.chequeTracker
+PRODUCT_BUNDLE_IDENTIFIER = com.sobha.chequetracker
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.latinem. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Sobha. All rights reserved.
