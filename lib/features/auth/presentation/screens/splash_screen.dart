@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:safe_device/safe_device.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/app_version_provider.dart';
 import '../../../../core/routing/route_names.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/animated_widgets/gold_loading_bar.dart';
+import '../../../../core/widgets/force_update_dialog.dart';
 import '../../../../core/widgets/sobha_wordmark.dart';
 import '../../domain/entities/user.dart';
 import '../providers/auth_notifier.dart';
@@ -49,6 +51,25 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     if (await _isDeviceCompromised()) {
       if (!mounted) return;
       setState(() => _blockedForIntegrity = true);
+      return;
+    }
+
+    // Checked before auth so a returning, already-logged-in user is gated
+    // too, not just someone landing on the login screen. A failed/timed-out
+    // check (see LoadlyVersionCheckService) resolves to updateAvailable:
+    // false, so this never blocks the app on its own.
+    AppVersionInfo? versionInfo;
+    try {
+      versionInfo = await ref.read(appVersionProvider.future);
+    } catch (_) {
+      versionInfo = null;
+    }
+    if (versionInfo != null && versionInfo.updateStatus.updateAvailable) {
+      if (!mounted) return;
+      // Fire-and-forget: the dialog is non-dismissible (no "Later"), so
+      // there's nothing to await — we just stop here and never navigate
+      // away from splash while it's up.
+      showForceUpdateDialog(context, versionInfo.updateStatus);
       return;
     }
 

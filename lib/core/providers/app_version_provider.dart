@@ -23,6 +23,8 @@ class AppVersionInfo extends Equatable {
 /// generated boilerplate a full notifier needs would buy nothing here.
 final appVersionProvider = FutureProvider<AppVersionInfo>((ref) async {
   final packageInfo = await PackageInfo.fromPlatform();
-  final status = await ref.read(versionCheckServiceProvider).checkForUpdate(packageInfo.version);
+  final status = await ref
+      .read(versionCheckServiceProvider)
+      .checkForUpdate(currentVersion: packageInfo.version, currentBuildNumber: packageInfo.buildNumber);
   return AppVersionInfo(version: packageInfo.version, buildNumber: packageInfo.buildNumber, updateStatus: status);
 });

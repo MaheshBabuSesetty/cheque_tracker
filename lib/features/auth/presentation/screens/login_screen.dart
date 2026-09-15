@@ -9,15 +9,14 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_extensions.dart';
 import '../../../../core/utils/extensions/context_extensions.dart';
 // Username/password sign-in is disabled — see the commented-out fields in
-// build(). `Validators` and `LabeledTextField` are used by nothing else in
-// this file, so their imports are commented out alongside them rather than
-// left dangling for the analyzer.
+// build(). `Validators`, `LabeledTextField`, and `AppPrimaryButton` are used
+// by nothing else in this file, so their imports are commented out
+// alongside them rather than left dangling for the analyzer.
 // import '../../../../core/utils/validators.dart';
-import '../../../../core/widgets/app_primary_button.dart';
+// import '../../../../core/widgets/app_primary_button.dart';
 // import '../../../../core/widgets/labeled_text_field.dart';
 import '../../../../core/widgets/responsive_content.dart';
 import '../../../../core/widgets/sobha_wordmark.dart';
-import '../../../../services/version_check_service.dart';
 import '../../domain/entities/user.dart';
 import '../providers/auth_notifier.dart';
 
@@ -448,111 +447,18 @@ class _MicrosoftLogo extends StatelessWidget {
 class _VersionFooter extends ConsumerWidget {
   const _VersionFooter();
 
-  Future<void> _showUpdateSheet(BuildContext context, AppVersionStatus status) {
-    return showModalBottomSheet<void>(
-      context: context,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => Container(
-        decoration: BoxDecoration(
-          color: sheetContext.semanticColors.pageBackground,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Update available',
-                    style: Theme.of(
-                      sheetContext,
-                    ).textTheme.titleLarge?.copyWith(fontSize: 17.5),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Later',
-                  icon: Icon(Icons.close, size: 20, color: sheetContext.semanticColors.textMuted),
-                  onPressed: () => Navigator.of(sheetContext).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Version ${status.latestVersion} is ready — you have ${status.currentVersion}.',
-              style: TextStyle(
-                fontSize: 12.5,
-                color: sheetContext.semanticColors.textMuted,
-              ),
-            ),
-            if (status.releaseNotes != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                status.releaseNotes!,
-                style: const TextStyle(fontSize: 12, height: 1.4),
-              ),
-            ],
-            const SizedBox(height: 18),
-            AppPrimaryButton(
-              label: 'Update now',
-              onPressed: () {
-                Navigator.of(sheetContext).pop();
-                if (context.mounted) {
-                  context.showSnackBar(
-                    'This would open the App Store / Play Store in production.',
-                  );
-                }
-              },
-              backgroundColor: AppColors.gold,
-              foregroundColor: Colors.black,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Reads the same cached appVersionProvider result the splash screen's
+    // force-update check already resolved — an available update blocks
+    // navigation there (see showForceUpdateDialog), so this screen is only
+    // ever reached when there isn't one. Just the plain version footer.
     final versionAsync = ref.watch(appVersionProvider);
     final info = versionAsync.value;
-    final updateStatus = info?.updateStatus;
     final colors = context.semanticColors;
 
     return Column(
       children: [
-        if (updateStatus != null && updateStatus.updateAvailable) ...[
-          GestureDetector(
-            onTap: () => _showUpdateSheet(context, updateStatus),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: colors.pendingBg,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.system_update_alt, size: 14, color: colors.accent),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Update available — v${updateStatus.latestVersion}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: colors.accent,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
         if (info != null) ...[
           Text(
             'v${info.version} (${info.buildNumber})',

@@ -37,7 +37,4 @@ class ApiEndpoints {
   // Collections
   static const String collections = '/collections';
   static String collectionByChequeId(String chequeId) => '/collections/$chequeId';
-
-  // App
-  static const String appVersion = '/app/version';
 }

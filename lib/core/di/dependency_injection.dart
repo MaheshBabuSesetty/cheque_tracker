@@ -90,10 +90,12 @@ final sessionEventsProvider = Provider<SessionEvents>((ref) {
   return events;
 });
 
-// `GET /app/version` is AllowAnonymous and low-risk — no debug-mode mock
-// needed, unlike auth. A failed check just means no update banner shows.
+// Reuses the backend's unauthenticated Dio client purely as an HTTP GET
+// client here — Loadly is a completely different host, but Dio resolves an
+// absolute URL (as `LoadlyVersionCheckService` passes) without going
+// through `baseUrl`, so a second Dio instance would buy nothing.
 final versionCheckServiceProvider = Provider<VersionCheckService>((ref) {
-  return HttpVersionCheckService(ref.watch(unauthenticatedDioClientProvider));
+  return LoadlyVersionCheckService(ref.watch(unauthenticatedDioClientProvider));
 });
 
 // Login/refresh/logout/version-check never carry (or need) the bearer
