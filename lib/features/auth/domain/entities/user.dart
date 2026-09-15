@@ -15,7 +15,7 @@ class User extends Equatable {
   /// the real enforcement boundary.
   final List<String> roles;
 
-  bool get isVrm => roles.contains('VRM');
+  bool get isAccounts => roles.contains('Accounts');
 
   @override
   List<Object?> get props => [id, email, name, roles];

@@ -38,7 +38,7 @@ class CollectScreen extends ConsumerWidget {
     // non-VRM account sees a clear reason instead of a form that will only
     // ever fail with "not authorized" partway through.
     final user = ref.watch(authProvider).value;
-    if (user != null && !user.isVrm) {
+    if (user != null && !user.isAccounts) {
       return const _NotAuthorizedView();
     }
 

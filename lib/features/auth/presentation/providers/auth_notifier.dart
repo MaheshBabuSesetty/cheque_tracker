@@ -61,7 +61,7 @@ class AuthNotifier extends _$AuthNotifier {
   /// a sync failure here must not block sign-in or app startup — the
   /// vendor picker still works via `GetVendors`'s cache-or-fetch fallback.
   Future<void> _syncVendorsIfVrm(User? user) async {
-    if (user == null || !user.isVrm) return;
+    if (user == null || !user.isAccounts) return;
     try {
       await ref.read(syncVendorsProvider)();
     } catch (_) {
