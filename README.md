@@ -141,6 +141,25 @@ The login screen's "Sign in with Microsoft" button (`LoginScreen`/`AuthNotifier.
 
 Architecture-wise, the whole SSO flow follows the same pattern the rest of the app uses for swappable integrations (`EmiratesIdOcrService`, `ChequeOcrService`, `ImageCaptureService`): `SsoAuthService` is the abstract contract (`domain/repositories/sso_auth_service.dart`), `AzureAdSsoService` (`data/datasources/azure_ad_sso_data_source.dart`) is the one concrete implementation today. Adding a second provider (Google, Okta, ...) means a new class behind that same interface, not a change to `AuthRepository`/`AuthNotifier`/`LoginScreen`.
 
+### Migrating the OAuth redirect to Android App Links (pentest V-06)
+
+The mobile pentest report flagged the redirect above (`com.sobha.chequetracker://oauthredirect`) as a custom URI scheme, which Android doesn't treat as exclusive to this app — another installed app could register the same scheme and receive the redirect. PKCE (already implemented) stops that from being exploitable, but a verified [Android App Link](https://developer.android.com/training/app-links/verify-android-applinks) closes the gap properly. The client-side half of this migration is scaffolded and inert until the two external pieces below exist — do not flip the switch before both are done, or Microsoft sign-in will stop completing.
+
+The three hosts already used for the API (`chqtrk-api-dev/uat/prod.sobhaapps.com`) are the chosen redirect hosts — one intent-filter per host is already declared on `RedirectUriReceiverActivity` in `AndroidManifest.xml`, each independently verified (so one host's file being late doesn't block the other two). Two things outside this repo still need to happen per host before any of this is live:
+
+1. **Publish a Digital Asset Links file** at `https://<host>/.well-known/assetlinks.json` for each of the three hosts — `android/app/assetlinks.json.template` has the exact JSON (identical content for all three, since all three builds are signed by the same keystore). It needs the app's SHA-256 signing certificate fingerprint(s), obtainable via:
+   ```
+   keytool -list -v -keystore <your-release-keystore> -alias <key-alias>
+   ```
+   (one fingerprint per keystore that signs a build reaching real devices — typically release, and debug too if App Links need to work on debug builds).
+2. **Register each HTTPS URL** (`https://chqtrk-api-dev.sobhaapps.com/oauthredirect`, `.../uat.../oauthredirect`, `.../prod.../oauthredirect`) as additional redirect URIs on the Entra ID app registration's "Mobile and desktop applications" platform, alongside the existing custom-scheme one.
+
+Once both are live for a given environment, flip that environment's active `redirectUri`: `.env`'s single shared `AZURE_AD_REDIRECT_URI` needs to become three per-environment values (`DEV_`/`UAT_`/`PROD_AZURE_AD_REDIRECT_URI`), the same pattern `AppEnvironment` already uses for `apiBaseUrl` — `AzureAdConfig.redirectUri` isn't wired that way yet since there's nothing to select between until the hosts are actually verified; do that wiring at the same time as the cutover, not before. Cut over per-environment independently (e.g. UAT first) rather than all three at once, since each depends on its own host's `assetlinks.json` being correct.
+
+iOS isn't covered by V-06 (Android-specific finding) but has the equivalent gap; migrating it means adding an Associated Domains entitlement (`applinks:<host>`) in `ios/Runner/Runner.entitlements` and hosting `/.well-known/apple-app-site-association` on the same host — not scaffolded yet.
+
+Until each environment's cutover is done, that build keeps using the custom scheme as its active `redirectUri` — the App Link intent-filters added to `AndroidManifest.xml`'s `RedirectUriReceiverActivity` are additional, not a replacement, so nothing here can break the current working sign-in flow.
+
 ## Release build
 
 Bump `version:` in `pubspec.yaml` first (`x.y.z+buildNumber`) — Android's version code and iOS's build number both come from the `+buildNumber` suffix.

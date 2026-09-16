@@ -40,6 +40,69 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Pentest V-06: flutter_appauth's own manifest contributes an
+             intent-filter on this activity for the custom scheme configured
+             via the appAuthRedirectScheme placeholder in build.gradle.kts
+             (com.sobha.chequetracker://oauthredirect). Custom schemes are
+             not exclusive on Android — any app can register the same one
+             and intercept the redirect — so these additional intent-filters
+             add verified HTTPS Android App Links as OS-enforced redirect
+             targets. Android's manifest merger combines all filters onto the
+             one activity since the component name matches.
+
+             One filter per environment's API host, not one filter with all
+             three hosts as sibling <data> elements: this app has no Gradle
+             product flavors, so every environment (dev/uat/prod, selected at
+             build time via the APP_ENV dart-define) ships from the same
+             manifest — whichever host the installed build's Dart-side
+             AzureAdConfig.redirectUri actually points at must already be
+             verified here. Separate filters also mean one host failing
+             Digital Asset Links verification (e.g. its assetlinks.json isn't
+             live yet) doesn't block verification of the other two.
+
+             Each filter is inert until, for that host: the API/infra team
+             publishes a Digital Asset Links file at
+             https://<host>/.well-known/assetlinks.json (see
+             android/app/assetlinks.json.template for its contents and how to
+             get the signing-certificate fingerprint it needs), and that same
+             https://<host>/oauthredirect URL is registered as a redirect URI
+             on the Entra ID app registration alongside the existing custom
+             scheme. Until then, AzureAdConfig.redirectUri / .env must keep
+             using the custom scheme as the active redirectUri: without a
+             live, correct assetlinks.json, android:autoVerify fails and the
+             OS falls back to the disambiguation chooser instead of routing
+             straight to the app. -->
+        <activity
+            android:name="net.openid.appauth.RedirectUriReceiverActivity"
+            android:exported="true">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="chqtrk-api-dev.sobhaapps.com"
+                    android:pathPrefix="/oauthredirect"/>
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="chqtrk-api-uat.sobhaapps.com"
+                    android:pathPrefix="/oauthredirect"/>
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="chqtrk-api-prod.sobhaapps.com"
+                    android:pathPrefix="/oauthredirect"/>
+            </intent-filter>
+        </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
