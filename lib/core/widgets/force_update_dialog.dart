@@ -30,6 +30,14 @@ class _ForceUpdateDialog extends StatelessWidget {
     final url = status.updateUrl;
     if (url == null) return;
     final uri = Uri.parse(url);
+    // Defensive allowlist (found during a security review): updateUrl is
+    // always LoadlyVersionCheckService.shareUrl today, a hardcoded constant,
+    // so this can't currently be tripped — but VersionCheckService is an
+    // interface, and nothing stops a future implementation from deriving
+    // this from this app's own API response instead. Scoping the launch to
+    // the one host this is meant for means that day can't turn an
+    // update-check response into an arbitrary externally-launched URL.
+    if (uri.scheme != 'https' || uri.host != 'loadly.io') return;
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

@@ -12,13 +12,21 @@
 /// if a release build ends up on `dev` so that mistake doesn't ship
 /// silently.
 ///
-/// DEV's URL is confirmed live. **UAT/Prod are placeholder hostnames**
-/// (`dev` swapped for `uat`/`prod` on the same domain — unverified) — fix
-/// the root `.env` once the real hosts are known; nothing here needs to change.
+/// As of 2026-09-22, checked directly against public DNS (1.1.1.1/8.8.8.8)
+/// and over HTTPS, outside the app: **UAT is the only host that's actually
+/// live** (`chqtrk-api-uat.sobhaapps.com` resolves, returns 401 from
+/// `/auth/me`). Both `chqtrk-api-dev.sobhaapps.com` and
+/// `chequetracker-api.sobhaapps.com` (dev/prod) have no DNS record at all —
+/// this is the opposite of what this file's naming suggests. Fix the root
+/// `.env` once the real dev/prod hosts are known; nothing here needs to
+/// change.
 class AppEnvironment {
   const AppEnvironment._();
 
-  static const String name = String.fromEnvironment('APP_ENV', defaultValue: 'dev');
+  static const String name = String.fromEnvironment(
+    'APP_ENV',
+    defaultValue: 'dev',
+  );
 
   static const String _devApiBaseUrl = String.fromEnvironment(
     'DEV_API_BASE_URL',
@@ -30,10 +38,12 @@ class AppEnvironment {
   );
   static const String _prodApiBaseUrl = String.fromEnvironment(
     'PROD_API_BASE_URL',
-    defaultValue: 'https://chqtrk-api-prod.sobhaapps.com/api',
+    defaultValue: 'https://chequetracker-api.sobhaapps.com/api',
   );
 
-  static const String apiBaseUrl = name == 'prod' ? _prodApiBaseUrl : (name == 'uat' ? _uatApiBaseUrl : _devApiBaseUrl);
+  static const String apiBaseUrl = name == 'prod'
+      ? _prodApiBaseUrl
+      : (name == 'uat' ? _uatApiBaseUrl : _devApiBaseUrl);
 
   static bool get isDev => name == 'dev';
   static bool get isUat => name == 'uat';

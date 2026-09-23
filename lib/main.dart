@@ -13,6 +13,7 @@ import 'core/routing/route_names.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_mode_provider.dart';
 import 'features/auth/presentation/providers/auth_notifier.dart';
+import 'services/image_capture_service.dart';
 
 // Screenshot/app-switcher redaction (security audit F-6) is implemented
 // natively per platform rather than via a plugin — see MainActivity.kt
@@ -24,6 +25,16 @@ import 'features/auth/presentation/providers/auth_notifier.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sharedPreferences = await SharedPreferences.getInstance();
+
+  // Captured Emirates ID / cheque / signature photos never survive a cold
+  // start as an in-progress draft (`CollectionDraft` is in-memory Riverpod
+  // state only, never persisted), so anything left under the attachments
+  // directory at this point is guaranteed orphaned — either already
+  // uploaded by a submit that completed before the process died, or
+  // abandoned mid-capture. Swept before runApp() so it never races a fresh
+  // capture. Found during a security review — there was no retention policy
+  // at all for this identity/financial imagery before this fix.
+  await DeviceImageCaptureService(navigatorKey).sweepOrphanedAttachments();
 
   // A release build that silently fell back to the dev API (no
   // --dart-define-from-file=.env --dart-define=APP_ENV=... passed) is

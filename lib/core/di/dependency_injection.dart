@@ -57,7 +57,14 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
 });
 
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
-  return const FlutterSecureStorage();
+  return const FlutterSecureStorage(
+    // Explicit rather than the plugin's default: routes through Jetpack's
+    // EncryptedSharedPreferences (AES-256-GCM-backed) instead of the
+    // plugin's legacy per-key Keystore encryption. Both are hardware-backed
+    // and secure either way — this is a hardening upgrade, not a fix for a
+    // real gap (found during a security review).
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 });
 
 final storageServiceProvider = Provider<StorageService>((ref) {
@@ -90,17 +97,25 @@ final sessionEventsProvider = Provider<SessionEvents>((ref) {
   return events;
 });
 
-// Reuses the backend's unauthenticated Dio client purely as an HTTP GET
-// client here — Loadly is a completely different host, but Dio resolves an
-// absolute URL (as `LoadlyVersionCheckService` passes) without going
-// through `baseUrl`, so a second Dio instance would buy nothing.
+// A deliberately separate, bare Dio — NOT `unauthenticatedDioClientProvider`
+// — because that client now carries certificate pinning (pentest V-13) for
+// this app's own API host, and Dio resolves an absolute URL (as
+// `LoadlyVersionCheckService` passes for the loadly.io share page) without
+// going through `baseUrl`. Sharing the pinned client here previously meant
+// every version check to loadly.io was silently rejected the moment pins
+// went live for an environment, since loadly.io's certificate can never
+// match a fingerprint pinned to the API host — found during a security
+// review, fixed by giving this its own unpinned client instead.
 final versionCheckServiceProvider = Provider<VersionCheckService>((ref) {
-  return LoadlyVersionCheckService(ref.watch(unauthenticatedDioClientProvider));
+  return LoadlyVersionCheckService(Dio());
 });
 
-// Login/refresh/logout/version-check never carry (or need) the bearer
-// token, and must never trigger `AuthInterceptor`'s refresh-on-401 logic —
-// they run on this separate, interceptor-free client instead.
+// Login/refresh/logout never carry (or need) the bearer token, and must
+// never trigger `AuthInterceptor`'s refresh-on-401 logic — they run on this
+// separate, interceptor-free client instead. Also carries certificate
+// pinning (pentest V-13) for this app's own API host — see
+// `versionCheckServiceProvider` above for why the loadly.io version check
+// deliberately does NOT share this client.
 final unauthenticatedDioClientProvider = Provider<Dio>((ref) {
   return UnauthenticatedDioClient().dio;
 });

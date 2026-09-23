@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appID": "Z83278FSCZ.com.sobha.chequetracker",
+        "paths": ["/oauthredirect"]
+      }
+    ]
+  }
+}

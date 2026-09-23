@@ -43,6 +43,9 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   final Dio unauthenticatedDio;
   final Dio dio;
 
+  /// Delay before the one-shot retry in [loginWithSso] below.
+  static const _ssoConnectionRetryDelay = Duration(seconds: 1);
+
   @override
   Future<AuthSession> login({required String username, required String password}) async {
     try {
@@ -58,14 +61,35 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
 
   @override
   Future<AuthSession> loginWithSso({required String idToken, required String provider}) async {
+    Future<Response<Map<String, dynamic>>> post() => unauthenticatedDio.post<Map<String, dynamic>>(
+      ApiEndpoints.ssoLogin,
+      data: {'idToken': idToken, 'provider': provider},
+    );
+
     try {
-      final response = await unauthenticatedDio.post<Map<String, dynamic>>(
-        ApiEndpoints.ssoLogin,
-        data: {'idToken': idToken, 'provider': provider},
-      );
+      final response = await post();
       return _sessionFromJson(response.data!);
     } on DioException catch (e) {
-      throw ApiErrorParser.parse(e);
+      // This call is the one made right after the app resumes from the
+      // external Microsoft sign-in browser session — unlike every other
+      // call here, which happens with the app already in the foreground.
+      // Observed in the field (release build): the very first request on
+      // resume can fail DNS resolution outright (`SocketException: Failed
+      // host lookup`) even though the device has a working connection and
+      // an identical request a moment later succeeds — the OS/resolver
+      // hasn't finished catching the app's networking back up yet. Retry
+      // once, after a short delay, before surfacing anything to the agent;
+      // any other connection-level failure (a real outage, a bad host) will
+      // just fail the same way again and fall through to the normal error
+      // mapping below.
+      if (e.type != DioExceptionType.connectionError) throw ApiErrorParser.parse(e);
+      await Future<void>.delayed(_ssoConnectionRetryDelay);
+      try {
+        final response = await post();
+        return _sessionFromJson(response.data!);
+      } on DioException catch (e2) {
+        throw ApiErrorParser.parse(e2);
+      }
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../constants/api_endpoints.dart';
 import '../constants/app_constants.dart';
+import 'certificate_pinning.dart';
 import 'interceptors/logging_interceptor.dart';
 
 /// A [Dio] instance with no [AuthInterceptor] attached, for the four routes
@@ -21,6 +22,7 @@ class UnauthenticatedDioClient {
           headers: const {'Content-Type': 'application/json'},
         ),
       ) {
+    configureCertificatePinning(dio);
     if (kDebugMode) {
       dio.interceptors.add(LoggingInterceptor());
     }

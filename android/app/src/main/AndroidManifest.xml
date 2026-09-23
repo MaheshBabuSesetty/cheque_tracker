@@ -1,6 +1,16 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Pentest V-16: the `camera` plugin's own manifest declares
+         RECORD_AUDIO unconditionally (for its video-recording API), even
+         though this app only ever opens the controller with
+         enableAudio: false (in_app_camera_screen.dart) — it captures still
+         photos of the collector, cheque and Emirates ID only, never video or
+         audio. tools:node="remove" strips the merged permission from the
+         final manifest instead of just leaving it unrequested at runtime, so
+         it doesn't show up in the Play Store's permission list either. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove"/>
     <application
         android:label="Sobha Cheque Tracker"
         android:name="${applicationName}"
@@ -50,18 +60,19 @@
              targets. Android's manifest merger combines all filters onto the
              one activity since the component name matches.
 
-             One filter per environment's API host, not one filter with all
-             three hosts as sibling <data> elements: this app has no Gradle
-             product flavors, so every environment (dev/uat/prod, selected at
-             build time via the APP_ENV dart-define) ships from the same
-             manifest — whichever host the installed build's Dart-side
-             AzureAdConfig.redirectUri actually points at must already be
-             verified here. Separate filters also mean one host failing
-             Digital Asset Links verification (e.g. its assetlinks.json isn't
-             live yet) doesn't block verification of the other two.
+             One filter for the single active environment's host, not one
+             filter per environment (previously dev/uat/prod all at once):
+             this app has no Gradle product flavors, so build.gradle.kts
+             resolves the oauthRedirectHost placeholder below from the same
+             APP_ENV dart-define the Dart side already reads (see
+             resolveOauthRedirectHost() there) and the manifest merger bakes
+             in only that one host. A static/decompiled read of a built APK's
+             manifest — exactly how pentest V-14 found all three hosts listed
+             together — now shows only the environment that APK was actually
+             built for.
 
-             Each filter is inert until, for that host: the API/infra team
-             publishes a Digital Asset Links file at
+             This filter is inert until, for the active host: the API/infra
+             team publishes a Digital Asset Links file at
              https://<host>/.well-known/assetlinks.json (see
              android/app/assetlinks.json.template for its contents and how to
              get the signing-certificate fingerprint it needs), and that same
@@ -81,25 +92,7 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data
                     android:scheme="https"
-                    android:host="chqtrk-api-dev.sobhaapps.com"
-                    android:pathPrefix="/oauthredirect"/>
-            </intent-filter>
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data
-                    android:scheme="https"
-                    android:host="chqtrk-api-uat.sobhaapps.com"
-                    android:pathPrefix="/oauthredirect"/>
-            </intent-filter>
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data
-                    android:scheme="https"
-                    android:host="chqtrk-api-prod.sobhaapps.com"
+                    android:host="${oauthRedirectHost}"
                     android:pathPrefix="/oauthredirect"/>
             </intent-filter>
         </activity>

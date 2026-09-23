@@ -39,7 +39,6 @@ abstract class StorageService {
   /// session should still be honored or wiped, forcing a fresh sign-in.
   Future<bool?> getRememberDevice();
   Future<void> saveRememberDevice(bool remember);
-  Future<void> clearRememberDevice();
 
   Future<String?> getCachedUserJson();
   Future<void> saveCachedUserJson(String json);
@@ -124,11 +123,6 @@ class SecureStorageService implements StorageService {
   @override
   Future<void> saveRememberDevice(bool remember) async {
     await _prefs.setBool(_rememberDeviceKey, remember);
-  }
-
-  @override
-  Future<void> clearRememberDevice() async {
-    await _prefs.remove(_rememberDeviceKey);
   }
 
   @override

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -26,22 +28,48 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
   @override
   CollectionDraft build() => const CollectionDraft();
 
+  /// Best-effort delete of a captured file that's just been replaced or
+  /// discarded — never blocks the caller (found during a security review:
+  /// captured Emirates ID / cheque / signature images had no cleanup path
+  /// at all before this, and accumulated on-device indefinitely).
+  void _forgetFile(String? path) {
+    if (path != null) unawaited(ref.read(imageCaptureServiceProvider).deleteFile(path));
+  }
+
+  void _forgetDraftFiles(CollectionDraft draft) {
+    _forgetFile(draft.repPhotoPath);
+    _forgetFile(draft.idFrontPath);
+    _forgetFile(draft.idBackPath);
+    _forgetFile(draft.chequeCopyPath);
+    _forgetFile(draft.voucherPath);
+    _forgetFile(draft.signaturePath);
+    for (final path in draft.supportingDocPaths) {
+      _forgetFile(path);
+    }
+  }
+
   /// Picking a different vendor invalidates whatever cheque/photo was
   /// selected for the previous one — a cheque only ever belongs to one
   /// vendor.
-  void pickVendor(Vendor vendor) => state = state.copyWith(
-        vendor: () => vendor,
-        cheque: () => null,
-        chequeCopyPath: () => null,
-        chequeScan: () => null,
-      );
+  void pickVendor(Vendor vendor) {
+    _forgetFile(state.chequeCopyPath);
+    state = state.copyWith(
+      vendor: () => vendor,
+      cheque: () => null,
+      chequeCopyPath: () => null,
+      chequeScan: () => null,
+    );
+  }
 
-  void clearVendor() => state = state.copyWith(
-        vendor: () => null,
-        cheque: () => null,
-        chequeCopyPath: () => null,
-        chequeScan: () => null,
-      );
+  void clearVendor() {
+    _forgetFile(state.chequeCopyPath);
+    state = state.copyWith(
+      vendor: () => null,
+      cheque: () => null,
+      chequeCopyPath: () => null,
+      chequeScan: () => null,
+    );
+  }
 
   void setRepName(String value) => state = state.copyWith(repName: value, nameFromOcr: false);
 
@@ -61,12 +89,15 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
 
   Future<void> captureRepPhoto() async {
     final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'rep-photo');
-    if (path != null) state = state.copyWith(repPhotoPath: () => path);
+    if (path == null) return;
+    _forgetFile(state.repPhotoPath);
+    state = state.copyWith(repPhotoPath: () => path);
   }
 
   Future<void> captureIdFront() async {
     final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'id-front');
     if (path == null) return;
+    _forgetFile(state.idFrontPath);
     state = state.copyWith(idFrontPath: () => path, frontIdScan: () => null, isScanningId: true);
     final scan = await ref.read(scanEmiratesIdProvider)(path);
     state = state.copyWith(isScanningId: false, frontIdScan: () => scan);
@@ -76,6 +107,7 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
   Future<void> captureIdBack() async {
     final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'id-back');
     if (path == null) return;
+    _forgetFile(state.idBackPath);
     state = state.copyWith(idBackPath: () => path, backIdScan: () => null, isScanningId: true);
     final scan = await ref.read(scanEmiratesIdProvider)(path);
     state = state.copyWith(isScanningId: false, backIdScan: () => scan);
@@ -124,8 +156,12 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     if (path == null) return null;
 
     final match = await _findSignedCheque(vendor: vendor, number: trimmed);
-    if (match == null) return false;
+    if (match == null) {
+      _forgetFile(path);
+      return false;
+    }
 
+    _forgetFile(state.chequeCopyPath);
     state = state.copyWith(cheque: () => match, chequeCopyPath: () => path);
     await _scanChequeCopy(path, match);
     return true;
@@ -157,11 +193,15 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     // check to see exactly what was compared — tells you in one look
     // whether the typed number is fine but that vendor's SIGNED list
     // genuinely doesn't contain it (wrong vendor, not signed yet, etc).
-    debugPrint(
-      'Cheque select-by-number: no match for "$number" among '
-      '${vendor.name}\'s ${cheques.length} SIGNED cheque(s): '
-      '${cheques.map((c) => c.chequeNumber).join(', ')}',
-    );
+    // kDebugMode-gated — cheque numbers are financial data and must not
+    // reach a release build's platform log (found during a security review).
+    if (kDebugMode) {
+      debugPrint(
+        'Cheque select-by-number: no match for "$number" among '
+        '${vendor.name}\'s ${cheques.length} SIGNED cheque(s): '
+        '${cheques.map((c) => c.chequeNumber).join(', ')}',
+      );
+    }
     return null;
   }
 
@@ -174,11 +214,14 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     return stripped.isEmpty ? '0' : stripped;
   }
 
-  void clearCheque() => state = state.copyWith(
-        cheque: () => null,
-        chequeCopyPath: () => null,
-        chequeScan: () => null,
-      );
+  void clearCheque() {
+    _forgetFile(state.chequeCopyPath);
+    state = state.copyWith(
+      cheque: () => null,
+      chequeCopyPath: () => null,
+      chequeScan: () => null,
+    );
+  }
 
   /// Captures/replaces the cheque copy photo, then re-runs the OCR sanity
   /// check against the already-selected cheque (see [_scanChequeCopy]).
@@ -187,6 +230,7 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     if (cheque == null) return;
     final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'cheque-copy');
     if (path == null) return;
+    _forgetFile(state.chequeCopyPath);
     state = state.copyWith(chequeCopyPath: () => path);
     await _scanChequeCopy(path, cheque);
   }
@@ -214,7 +258,9 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
 
   Future<void> captureVoucher() async {
     final path = await ref.read(imageCaptureServiceProvider).captureFromCamera(prefix: 'voucher');
-    if (path != null) state = state.copyWith(voucherPath: () => path);
+    if (path == null) return;
+    _forgetFile(state.voucherPath);
+    state = state.copyWith(voucherPath: () => path);
   }
 
   Future<void> addSupportingDocument() async {
@@ -223,6 +269,7 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
   }
 
   void removeSupportingDocument(String path) {
+    _forgetFile(path);
     state = state.copyWith(supportingDocPaths: state.supportingDocPaths.where((p) => p != path).toList());
   }
 
@@ -234,6 +281,7 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
   /// then.
   Future<void> setSignature(Uint8List bytes) async {
     final path = await ref.read(imageCaptureServiceProvider).saveBytes(bytes, prefix: 'signature');
+    _forgetFile(state.signaturePath);
     state = state.copyWith(signaturePath: () => path);
   }
 
@@ -244,11 +292,17 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
   Future<CollectionRecord?> submit() async {
     if (!state.isComplete) return null;
 
-    final record = await ref.read(submitCollectionProvider)(state);
+    final draft = state;
+    final record = await ref.read(submitCollectionProvider)(draft);
+    // Uploaded successfully — the local copies have served their purpose.
+    _forgetDraftFiles(draft);
     state = const CollectionDraft();
     ref.invalidate(collectionsProvider);
     return record;
   }
 
-  void reset() => state = const CollectionDraft();
+  void reset() {
+    _forgetDraftFiles(state);
+    state = const CollectionDraft();
+  }
 }

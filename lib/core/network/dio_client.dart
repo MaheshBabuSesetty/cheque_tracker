@@ -5,6 +5,7 @@ import '../constants/api_endpoints.dart';
 import '../constants/app_constants.dart';
 import '../session/session_events.dart';
 import '../../services/storage_service.dart';
+import 'certificate_pinning.dart';
 import 'interceptors/auth_interceptor.dart';
 import 'interceptors/logging_interceptor.dart';
 import 'token_refresh_client.dart';
@@ -24,6 +25,7 @@ class DioClient {
           headers: const {'Content-Type': 'application/json'},
         ),
       ) {
+    configureCertificatePinning(dio);
     dio.interceptors.add(AuthInterceptor(dio, storageService, tokenRefreshClient, sessionEvents));
     if (kDebugMode) {
       dio.interceptors.add(LoggingInterceptor());

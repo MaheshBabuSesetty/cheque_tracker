@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Pentest V-06 (iOS side): mirrors the Android App Links intent-filters
+	     added to AndroidManifest.xml's RedirectUriReceiverActivity. One
+	     applinks entry per API host (dev/uat/prod) since this app has no
+	     Xcode configuration per environment - all three builds share this
+	     one entitlements file, same reasoning as the Android manifest.
+
+	     Inert until, per host: the file at
+	     ios/Runner/apple-app-site-association.template is published (as-is,
+	     no placeholder to fill in - the Team ID/bundle ID pair doesn't vary
+	     per environment) at https://<host>/.well-known/apple-app-site-association
+	     with no file extension and Content-Type application/json, and
+	     https://<host>/oauthredirect is registered as a redirect URI on the
+	     Entra ID app registration. Until both exist for an environment,
+	     AzureAdConfig.redirectUri / .env must keep using the custom scheme
+	     for that environment - see README's V-06 section. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:chqtrk-api-dev.sobhaapps.com</string>
+		<string>applinks:chqtrk-api-uat.sobhaapps.com</string>
+		<string>applinks:chequetracker-api.sobhaapps.com</string>
+	</array>
+</dict>
+</plist>

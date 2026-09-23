@@ -117,7 +117,7 @@ flutter run --dart-define-from-file=.env --dart-define=APP_ENV=dev   # or uat / 
 flutter test
 ```
 
-Environment config (API base URLs for dev/uat/prod) lives in `.env` and is picked at build/run time via `--dart-define=APP_ENV=<dev|uat|prod>` (defaults to `dev` if omitted). Only the `dev` host is confirmed live — see the comments in `.env` before relying on `uat`/`prod`.
+Environment config (API base URLs for dev/uat/prod) lives in `.env` and is picked at build/run time via `--dart-define=APP_ENV=<dev|uat|prod>` (defaults to `dev` if omitted). The `dev` and `prod` hosts are confirmed live — see the comments in `.env` before relying on `uat`.
 
 Camera capture (representative photo, Emirates ID front/back, cheque copy, voucher, supporting documents) uses an in-app camera screen (`core/widgets/camera/in_app_camera_screen.dart`, via the `camera` package), which needs a real device or a simulator that supports it — `NSCameraUsageDescription`/`NSPhotoLibraryUsageDescription` are already set in `ios/Runner/Info.plist`, and `android.permission.CAMERA` in the Android manifest.
 
@@ -129,36 +129,69 @@ The login screen's "Sign in with Microsoft" button (`LoginScreen`/`AuthNotifier.
    ```
    com.sobha.chequetracker://oauthredirect
    ```
-   Then fill in the real values in `.env`, replacing the `REPLACE_WITH_*` placeholders:
+   DEV and UAT share one app registration; PROD uses its own separate registration (same tenant). Then fill in the real values in `.env`, replacing the `REPLACE_WITH_*` placeholders:
    ```
    AZURE_AD_TENANT_ID=<tenant id>
-   AZURE_AD_CLIENT_ID=<client id>
+   DEV_AZURE_AD_CLIENT_ID=<dev/uat client id>
+   UAT_AZURE_AD_CLIENT_ID=<dev/uat client id>
+   PROD_AZURE_AD_CLIENT_ID=<prod client id>
    ```
-   (`AZURE_AD_REDIRECT_URI` only needs to change if the app's bundle ID / applicationId ever changes — it's derived from `com.sobha.chequetracker`, already wired into `android/app/build.gradle.kts`'s `appAuthRedirectScheme` placeholder and `ios/Runner/Info.plist`'s `CFBundleURLTypes`.)
+   Public-client app registrations authenticate via Authorization Code + PKCE and don't use a client secret — don't generate or store one for this registration.
+
+   (`*_AZURE_AD_REDIRECT_URI` only needs to change if the app's bundle ID / applicationId ever changes — it's derived from `com.sobha.chequetracker`, already wired into `android/app/build.gradle.kts`'s `appAuthRedirectScheme` placeholder and `ios/Runner/Info.plist`'s `CFBundleURLTypes`.)
 2. **A backend `POST /auth/sso` endpoint** that accepts `{ idToken, provider }`, verifies the token against Entra ID's public keys/issuer, and returns the same session shape `POST /auth/login` does. See `AuthRemoteDataSource.loginWithSso`'s doc comment for the exact contract. This endpoint doesn't exist yet — until it does, tapping "Sign in with Microsoft" will complete the real Microsoft sign-in but fail on the token-exchange call.
 
 **Known limitation**: `flutter_appauth` (the OIDC client this uses) is a generic client with no way to participate in Microsoft's proprietary broker handoff. On a device with Microsoft Authenticator or Intune Company Portal installed, if the tenant's Conditional Access policy requires broker-based sign-in for native/mobile apps, `AzureAdSsoService.signIn` hangs indefinitely (no success, no error, no timeout — confirmed via live device testing). This was previously worked around by switching to `msal_auth` (Microsoft's own MSAL SDK wrapper), then reverted back to `flutter_appauth`. If that hang reappears, `msal_auth` is the known fix — see `AzureAdSsoService`'s doc comment and git history around that migration for the exact native setup it needs (Info.plist/entitlements/AndroidManifest changes, a bumped iOS 16+ deployment target, and Android/iOS platform registrations in Entra ID).
 
 Architecture-wise, the whole SSO flow follows the same pattern the rest of the app uses for swappable integrations (`EmiratesIdOcrService`, `ChequeOcrService`, `ImageCaptureService`): `SsoAuthService` is the abstract contract (`domain/repositories/sso_auth_service.dart`), `AzureAdSsoService` (`data/datasources/azure_ad_sso_data_source.dart`) is the one concrete implementation today. Adding a second provider (Google, Okta, ...) means a new class behind that same interface, not a change to `AuthRepository`/`AuthNotifier`/`LoginScreen`.
 
-### Migrating the OAuth redirect to Android App Links (pentest V-06)
+### Migrating the OAuth redirect to verified App Links (pentest V-06)
 
-The mobile pentest report flagged the redirect above (`com.sobha.chequetracker://oauthredirect`) as a custom URI scheme, which Android doesn't treat as exclusive to this app — another installed app could register the same scheme and receive the redirect. PKCE (already implemented) stops that from being exploitable, but a verified [Android App Link](https://developer.android.com/training/app-links/verify-android-applinks) closes the gap properly. The client-side half of this migration is scaffolded and inert until the two external pieces below exist — do not flip the switch before both are done, or Microsoft sign-in will stop completing.
+The mobile pentest report flagged the redirect above (`com.sobha.chequetracker://oauthredirect`) as a custom URI scheme, which neither Android nor iOS treats as exclusive to this app — another installed app could register the same scheme and receive the redirect. PKCE (already implemented) stops that from being exploitable, but a verified [Android App Link](https://developer.android.com/training/app-links/verify-android-applinks) / [iOS Universal Link](https://developer.apple.com/ios/universal-links/) closes the gap properly. Everything client-side is scaffolded and wired, and inert until the two external pieces below exist per environment — do not flip a `.env` line before both are done for that environment, or Microsoft sign-in will stop completing for it.
 
-The three hosts already used for the API (`chqtrk-api-dev/uat/prod.sobhaapps.com`) are the chosen redirect hosts — one intent-filter per host is already declared on `RedirectUriReceiverActivity` in `AndroidManifest.xml`, each independently verified (so one host's file being late doesn't block the other two). Two things outside this repo still need to happen per host before any of this is live:
+The hosts already used for the API — `chqtrk-api-dev.sobhaapps.com`, `chqtrk-api-uat.sobhaapps.com`, `chequetracker-api.sobhaapps.com` (prod) — are the chosen redirect hosts:
 
-1. **Publish a Digital Asset Links file** at `https://<host>/.well-known/assetlinks.json` for each of the three hosts — `android/app/assetlinks.json.template` has the exact JSON (identical content for all three, since all three builds are signed by the same keystore). It needs the app's SHA-256 signing certificate fingerprint(s), obtainable via:
-   ```
-   keytool -list -v -keystore <your-release-keystore> -alias <key-alias>
-   ```
-   (one fingerprint per keystore that signs a build reaching real devices — typically release, and debug too if App Links need to work on debug builds).
-2. **Register each HTTPS URL** (`https://chqtrk-api-dev.sobhaapps.com/oauthredirect`, `.../uat.../oauthredirect`, `.../prod.../oauthredirect`) as additional redirect URIs on the Entra ID app registration's "Mobile and desktop applications" platform, alongside the existing custom-scheme one.
+- **Android** — a single `autoVerify` intent-filter is declared on `RedirectUriReceiverActivity` in `AndroidManifest.xml`, targeting the `${oauthRedirectHost}` manifest placeholder. `android/app/build.gradle.kts`'s `resolveOauthRedirectHost()` resolves that placeholder from the same `APP_ENV` dart-define the Dart side already reads (`flutter build apk --dart-define-from-file=.env --dart-define=APP_ENV=uat`, exactly as documented above — no extra build flag needed), so a given build's manifest only ever contains the one host it was actually built for. This was tightened after the pentest's own V-14 evidence showed a decompiled APK listing all three hosts (dev/uat/prod) at once; each environment's build now only reveals its own API host to anyone inspecting that build.
+- **iOS** — `ios/Runner/Runner.entitlements` declares `applinks:` for all three hosts and is wired into `CODE_SIGN_ENTITLEMENTS` for all three build configurations (Debug/Release/Profile) of the `Runner` target. Unlike Android, this hasn't been narrowed to the active environment yet — iOS wasn't in the pentest's scope, and per-build-configuration entitlements (rather than a single dart-define-driven placeholder) would need Debug/Release/Profile to line up with dev/uat/prod, which they don't today.
 
-Once both are live for a given environment, flip that environment's active `redirectUri`: `.env`'s single shared `AZURE_AD_REDIRECT_URI` needs to become three per-environment values (`DEV_`/`UAT_`/`PROD_AZURE_AD_REDIRECT_URI`), the same pattern `AppEnvironment` already uses for `apiBaseUrl` — `AzureAdConfig.redirectUri` isn't wired that way yet since there's nothing to select between until the hosts are actually verified; do that wiring at the same time as the cutover, not before. Cut over per-environment independently (e.g. UAT first) rather than all three at once, since each depends on its own host's `assetlinks.json` being correct.
+Two things outside this repo still need to happen per host before any of this is live:
 
-iOS isn't covered by V-06 (Android-specific finding) but has the equivalent gap; migrating it means adding an Associated Domains entitlement (`applinks:<host>`) in `ios/Runner/Runner.entitlements` and hosting `/.well-known/apple-app-site-association` on the same host — not scaffolded yet.
+1. **Publish the platform verification file** at `https://<host>/.well-known/`:
+   - Android: `assetlinks.json` — `android/app/assetlinks.json.template` has the exact JSON (identical content for all three hosts, since all three builds are signed by the same keystore). It needs the app's SHA-256 signing certificate fingerprint(s), obtainable via:
+     ```
+     keytool -list -v -keystore <your-release-keystore> -alias <key-alias>
+     ```
+     (one fingerprint per keystore that signs a build reaching real devices — typically release, and debug too if App Links need to work on debug builds).
+   - iOS: `apple-app-site-association` (no file extension, `Content-Type: application/json`) — `ios/Runner/apple-app-site-association.template` has the exact JSON, usable as-is (Team ID + bundle ID don't vary per environment, so there's no placeholder to fill in).
+2. **Register each HTTPS URL** (`https://chqtrk-api-dev.sobhaapps.com/oauthredirect`, `https://chqtrk-api-uat.sobhaapps.com/oauthredirect`, `https://chequetracker-api.sobhaapps.com/oauthredirect`) as additional redirect URIs on the Entra ID app registration's "Mobile and desktop applications" platform, alongside the existing custom-scheme one.
 
-Until each environment's cutover is done, that build keeps using the custom scheme as its active `redirectUri` — the App Link intent-filters added to `AndroidManifest.xml`'s `RedirectUriReceiverActivity` are additional, not a replacement, so nothing here can break the current working sign-in flow.
+Once both are live for a given environment, flip **only that environment's** line in `.env` — `DEV_`/`UAT_`/`PROD_AZURE_AD_REDIRECT_URI` (`AzureAdConfig.redirectUri` already selects between them the same way `AppEnvironment.apiBaseUrl` does) — from the custom scheme to that host's `https://.../oauthredirect` URL. Cut over per-environment independently (e.g. UAT first) rather than all three at once, since each depends on its own host's verification file being correct.
+
+Until an environment's cutover is done, that build keeps using the custom scheme as its active `redirectUri` — the App Link / Universal Link declarations above are additional, not a replacement, so nothing here can break the current working sign-in flow for an environment that hasn't cut over yet.
+
+### Certificate pinning (pentest V-13)
+
+The mobile pentest report flagged that the client validates TLS against the OS's built-in trust store only, with no certificate pinning — a defense-in-depth gap, not a live exploit (a working interception still needs a compromised device or a trusted-CA install). Pinning is scaffolded in `lib/core/network/certificate_pinning.dart` and wired into both `DioClient` and `UnauthenticatedDioClient`, but **inert by default**: `configureCertificatePinning` is a no-op until `DEV_`/`UAT_`/`PROD_CERT_PINS` in `.env` are filled in for the environment being built, so nothing here changes today's behaviour or risks locking a build out of its own API before real fingerprints are known.
+
+To enable it for an environment, get that host's certificate SHA-256 fingerprint:
+
+```bash
+openssl s_client -connect chqtrk-api-uat.sobhaapps.com:443 -servername chqtrk-api-uat.sobhaapps.com < /dev/null 2>/dev/null \
+  | openssl x509 -outform der \
+  | openssl dgst -sha256 -binary | openssl enc -base64
+```
+
+and set the matching `.env` line to a comma-separated list of at least two fingerprints — the current leaf plus the certificate that will replace it (or a backup/intermediate), so a routine renewal on the API side doesn't brick connectivity before an app update carrying the new pin can ship:
+
+```
+UAT_CERT_PINS=<current-leaf-sha256>,<next-or-backup-sha256>
+```
+
+Pinning validates the full certificate (not just its public key), so every fingerprint in the list needs updating whenever the corresponding certificate is renewed — track the API's renewal/rotation schedule and ship an app update with the new pin ahead of it.
+
+### Removed the unused RECORD_AUDIO permission (pentest V-16)
+
+The `camera` plugin's own `AndroidManifest.xml` declares `RECORD_AUDIO` unconditionally for its video-recording API. This app only ever opens the camera controller with `enableAudio: false` (`in_app_camera_screen.dart`) to capture still photos (collector, cheque, Emirates ID) — it never records video or audio. `android/app/src/main/AndroidManifest.xml` now strips the merged permission with `tools:node="remove"`, so it no longer appears in the built APK or the Play Store listing.
 
 ## Release build
 
@@ -186,7 +219,7 @@ flutter build apk --release --split-per-abi --dart-define-from-file=.env --dart-
 flutter build ipa --release --dart-define-from-file=.env --dart-define=APP_ENV=prod
 ```
 
-Swap `APP_ENV=prod` for `uat` to ship a staging build instead. As noted in `.env`, only the `dev` host is confirmed live — verify the `UAT_API_BASE_URL`/`PROD_API_BASE_URL` hostnames before relying on either.
+Swap `APP_ENV=prod` for `uat` to ship a staging build instead. As noted in `.env`, only the `dev` and `prod` hosts are confirmed live — verify the `UAT_API_BASE_URL` hostname before relying on it.
 
 ### A note on dependency versions
 

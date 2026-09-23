@@ -12,9 +12,11 @@ class ApiEndpoints {
   // Auth — none of these carry/need the bearer-attach-and-refresh interceptor.
   static const String login = '/auth/login';
 
-  /// Not yet implemented backend-side — see `AuthRemoteDataSource.
-  /// loginWithSso`'s doc comment for the expected request/response
-  /// contract (identical [AuthSession] shape to [login]).
+  /// Confirmed live backend-side on UAT only (returns 401 on an invalid
+  /// token rather than 404) as of 2026-09-22 — dev/prod hosts don't
+  /// currently resolve at all, see [AppEnvironment]'s doc comment. See
+  /// `AuthRemoteDataSource.loginWithSso`'s doc comment for the expected
+  /// request/response contract (identical [AuthSession] shape to [login]).
   static const String ssoLogin = '/auth/sso';
   static const String refresh = '/auth/refresh';
   static const String logout = '/auth/logout';
