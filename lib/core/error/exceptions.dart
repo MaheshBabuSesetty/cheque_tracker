@@ -56,3 +56,22 @@ class ValidationException implements Exception {
     return messages.isEmpty ? 'Some fields need attention.' : messages.first;
   }
 }
+
+/// A [ServerException] that keeps what the API said beyond the message —
+/// the HTTP [statusCode], the stable machine-readable [code] (branch on
+/// this, never on [message]), and, for errors about one specific cheque,
+/// which cheque ([chequeId]/[chequeNumber]). [chequeId] is optional even for
+/// cheque errors: a race between the server's check and its save returns
+/// the code alone.
+class ApiException extends ServerException {
+  const ApiException(super.message, {this.statusCode, this.code, this.chequeId, this.chequeNumber});
+
+  final int? statusCode;
+  final String? code;
+  final String? chequeId;
+  final String? chequeNumber;
+
+  /// A 5xx — the server may have finished some or all of the work before
+  /// failing, so the outcome of the request is unknown.
+  bool get isServerFailure => (statusCode ?? 0) >= 500;
+}

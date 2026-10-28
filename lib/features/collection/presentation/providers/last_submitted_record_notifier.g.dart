@@ -10,19 +10,26 @@ part of 'last_submitted_record_notifier.dart';
 // ignore_for_file: type=lint, type=warning
 /// Non-null while the Collect tab should show the "Collection recorded"
 /// success view instead of the form; set by the collect screen right
-/// after a successful submit, cleared by "Record another"/leaving the tab.
+/// after a successful submit (one record per cheque collected), cleared by
+/// "Record another"/leaving the tab.
 
 @ProviderFor(LastSubmittedRecordNotifier)
 final lastSubmittedRecordProvider = LastSubmittedRecordNotifierProvider._();
 
 /// Non-null while the Collect tab should show the "Collection recorded"
 /// success view instead of the form; set by the collect screen right
-/// after a successful submit, cleared by "Record another"/leaving the tab.
+/// after a successful submit (one record per cheque collected), cleared by
+/// "Record another"/leaving the tab.
 final class LastSubmittedRecordNotifierProvider
-    extends $NotifierProvider<LastSubmittedRecordNotifier, CollectionRecord?> {
+    extends
+        $NotifierProvider<
+          LastSubmittedRecordNotifier,
+          List<CollectionRecord>?
+        > {
   /// Non-null while the Collect tab should show the "Collection recorded"
   /// success view instead of the form; set by the collect screen right
-  /// after a successful submit, cleared by "Record another"/leaving the tab.
+  /// after a successful submit (one record per cheque collected), cleared by
+  /// "Record another"/leaving the tab.
   LastSubmittedRecordNotifierProvider._()
     : super(
         from: null,
@@ -42,33 +49,35 @@ final class LastSubmittedRecordNotifierProvider
   LastSubmittedRecordNotifier create() => LastSubmittedRecordNotifier();
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(CollectionRecord? value) {
+  Override overrideWithValue(List<CollectionRecord>? value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<CollectionRecord?>(value),
+      providerOverride: $SyncValueProvider<List<CollectionRecord>?>(value),
     );
   }
 }
 
 String _$lastSubmittedRecordNotifierHash() =>
-    r'7f45e0a022acb2abcbd0b1886044631c45ad3eca';
+    r'6bab7c0d5f72f18d02242d230ad2023ed1ef8cf2';
 
 /// Non-null while the Collect tab should show the "Collection recorded"
 /// success view instead of the form; set by the collect screen right
-/// after a successful submit, cleared by "Record another"/leaving the tab.
+/// after a successful submit (one record per cheque collected), cleared by
+/// "Record another"/leaving the tab.
 
 abstract class _$LastSubmittedRecordNotifier
-    extends $Notifier<CollectionRecord?> {
-  CollectionRecord? build();
+    extends $Notifier<List<CollectionRecord>?> {
+  List<CollectionRecord>? build();
   @$mustCallSuper
   @override
   void runBuild() {
-    final ref = this.ref as $Ref<CollectionRecord?, CollectionRecord?>;
+    final ref =
+        this.ref as $Ref<List<CollectionRecord>?, List<CollectionRecord>?>;
     final element =
         ref.element
             as $ClassProviderElement<
-              AnyNotifier<CollectionRecord?, CollectionRecord?>,
-              CollectionRecord?,
+              AnyNotifier<List<CollectionRecord>?, List<CollectionRecord>?>,
+              List<CollectionRecord>?,
               Object?,
               Object?
             >;

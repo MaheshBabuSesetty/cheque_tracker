@@ -1,3 +1,4 @@
+import '../../domain/entities/batch_cheque.dart';
 import '../../domain/entities/collection_attachment.dart';
 import '../../domain/entities/collection_record.dart';
 
@@ -16,7 +17,6 @@ class CollectionRecordModel extends CollectionRecord {
     required super.timestamp,
     super.repMobile,
     super.emiratesId,
-    super.collectorPhotoUrl,
     super.idFrontUrl,
     super.idBackUrl,
     super.chequePhotoUrl,
@@ -24,6 +24,8 @@ class CollectionRecordModel extends CollectionRecord {
     super.voucherUrl,
     super.supportingDocuments,
     super.newChequeStatus,
+    super.batchId,
+    super.batchCheques,
   });
 
   factory CollectionRecordModel.fromJson(Map<String, dynamic> json) => CollectionRecordModel(
@@ -35,7 +37,6 @@ class CollectionRecordModel extends CollectionRecord {
     repName: json['collectorName'] as String,
     repMobile: json['collectorMobile'] as String? ?? '',
     emiratesId: json['collectorEmiratesId'] as String? ?? '',
-    collectorPhotoUrl: json['collectorPhotoUrl'] as String?,
     idFrontUrl: json['emiratesIdFrontUrl'] as String?,
     idBackUrl: json['emiratesIdBackUrl'] as String?,
     chequePhotoUrl: json['chequePhotoUrl'] as String?,
@@ -52,5 +53,16 @@ class CollectionRecordModel extends CollectionRecord {
         .toList(),
     timestamp: DateTime.parse(json['collectedAt'] as String),
     newChequeStatus: json['newChequeStatus'] as String?,
+    batchId: json['batchId'] as String?,
+    batchCheques: (json['batchCheques'] as List<dynamic>? ?? [])
+        .map(
+          (c) => BatchCheque(
+            chequeId: (c as Map<String, dynamic>)['chequeId'] as String,
+            chequeNumber: c['chequeNumber'] as String,
+            amount: (c['amount'] as num).toDouble(),
+            currency: c['currency'] as String? ?? 'AED',
+          ),
+        )
+        .toList(),
   );
 }

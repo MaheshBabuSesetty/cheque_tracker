@@ -10,7 +10,7 @@ class CollectionRepositoryImpl implements CollectionRepository {
   final CollectionRemoteDataSource _remoteDataSource;
 
   @override
-  Future<CollectionRecord> submit(CollectionDraft draft) => _remoteDataSource.submit(draft);
+  Future<List<CollectionRecord>> submit(CollectionDraft draft) => _remoteDataSource.submit(draft);
 
   @override
   Future<List<CollectionSummary>> getAll() => _remoteDataSource.getAll();

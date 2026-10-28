@@ -24,6 +24,7 @@ class InAppCameraScreen extends StatefulWidget {
     this.shape = CameraFrameShape.rect,
     this.initialLens = CameraLensDirection.back,
     this.fillHeight = false,
+    this.resolutionPreset = ResolutionPreset.high,
   });
 
   final String title;
@@ -42,6 +43,11 @@ class InAppCameraScreen extends StatefulWidget {
   /// of empty screen. [aspectRatio] still governs the frame's width cap.
   final bool fillHeight;
 
+  /// Capture resolution. Most documents are fine at the default; a cheque
+  /// needs more, since its MICR band's E-13B glyphs are only a few pixels
+  /// tall at 720p and on-device OCR misreads them.
+  final ResolutionPreset resolutionPreset;
+
   /// Pushes the screen via the app's global [navKey] (rather than requiring
   /// a `BuildContext`) so context-free services/notifiers can launch it —
   /// see `lib/core/routing/app_router.dart`'s `navigatorKey` doc comment
@@ -55,6 +61,7 @@ class InAppCameraScreen extends StatefulWidget {
     CameraFrameShape shape = CameraFrameShape.rect,
     CameraLensDirection initialLens = CameraLensDirection.back,
     bool fillHeight = false,
+    ResolutionPreset resolutionPreset = ResolutionPreset.high,
   }) {
     return navKey.currentState!.push<XFile?>(
       AppPageRoute(
@@ -65,6 +72,7 @@ class InAppCameraScreen extends StatefulWidget {
           shape: shape,
           initialLens: initialLens,
           fillHeight: fillHeight,
+          resolutionPreset: resolutionPreset,
         ),
         transitionType: TransitionType.slide,
       ),
@@ -98,7 +106,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> with WidgetsBindi
         (c) => c.lensDirection == _lens,
         orElse: () => _cameras.first,
       );
-      final controller = CameraController(selected, ResolutionPreset.high, enableAudio: false);
+      final controller = CameraController(selected, widget.resolutionPreset, enableAudio: false);
       await controller.initialize();
       if (!mounted) {
         await controller.dispose();

@@ -66,7 +66,13 @@ class ApiErrorParser {
           case 403:
             return ForbiddenException(message);
           default:
-            return ServerException(message);
+            return ApiException(
+              message,
+              statusCode: statusCode,
+              code: data['code'] as String?,
+              chequeId: data['chequeId'] as String?,
+              chequeNumber: data['chequeNumber'] as String?,
+            );
         }
       }
     }
@@ -77,7 +83,7 @@ class ApiErrorParser {
       case 403:
         return const ForbiddenException();
       default:
-        return const ServerException();
+        return ApiException('Something went wrong on the server.', statusCode: statusCode);
     }
   }
 }

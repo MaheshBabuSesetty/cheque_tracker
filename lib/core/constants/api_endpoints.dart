@@ -22,12 +22,16 @@ class ApiEndpoints {
   static const String logout = '/auth/logout';
   static const String currentUser = '/auth/me';
 
+  // App
+  static const String appVersion = '/app/version';
+
   // Vendors
   static const String vendorsAvailableForCollection = '/vendors/available-for-collection';
   static String vendorDetail(String id) => '/vendors/$id';
 
   // Cheques
   static const String cheques = '/cheques';
+  static const String chequesBulkCollection = '/cheques/bulk/collection';
   static String chequeDetail(String id) => '/cheques/$id';
   static String chequeAudit(String id) => '/cheques/$id/audit';
   static String chequeCollection(String chequeId) => '/cheques/$chequeId/collection';

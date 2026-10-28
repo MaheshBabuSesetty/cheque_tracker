@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_extensions.dart';
 
-/// A tappable capture target for a photo (representative photo, Emirates ID
-/// front/back, cheque copy). Shows the captured image once [imagePath] is
+/// A tappable capture target for a photo (Emirates ID front/back, cheque
+/// copy). Shows the captured image once [imagePath] is
 /// set, otherwise a dashed placeholder with [icon] + [label]. [scanning]
 /// overlays the OCR scanline effect used while the Emirates ID front is
 /// being read.

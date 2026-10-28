@@ -449,10 +449,6 @@ class _VersionFooter extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Reads the same cached appVersionProvider result the splash screen's
-    // force-update check already resolved — an available update blocks
-    // navigation there (see showForceUpdateDialog), so this screen is only
-    // ever reached when there isn't one. Just the plain version footer.
     final versionAsync = ref.watch(appVersionProvider);
     final info = versionAsync.value;
     final colors = context.semanticColors;

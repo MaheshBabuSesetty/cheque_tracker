@@ -16,7 +16,7 @@ abstract class ImageCaptureService {
   /// Opens the in-app camera and returns the saved file path, or `null` if
   /// the agent backed out. [prefix] both becomes part of the filename (e.g.
   /// "id-front") for on-disk debuggability, and selects the viewfinder's
-  /// framing (aspect ratio/shape) and guidance text for that document type
+  /// framing (aspect ratio) and guidance text for that document type
   /// — see [_CameraConfig.forPrefix].
   Future<String?> captureFromCamera({required String prefix});
 
@@ -29,7 +29,7 @@ abstract class ImageCaptureService {
   Future<void> deleteFile(String path);
 
   /// Deletes every file left under the attachments directory — Emirates ID,
-  /// cheque, representative and signature photos are never persisted
+  /// cheque and signature photos are never persisted
   /// anywhere the draft survives a cold start (`CollectionDraft` is
   /// in-memory Riverpod state only), so anything still there when the app
   /// starts is guaranteed orphaned: either already uploaded by a submit
@@ -52,9 +52,8 @@ class DeviceImageCaptureService implements ImageCaptureService {
       title: config.title,
       guidance: config.guidance,
       aspectRatio: config.aspectRatio,
-      shape: config.shape,
-      initialLens: config.initialLens,
       fillHeight: config.fillHeight,
+      resolutionPreset: config.resolutionPreset,
     );
     if (file == null) return null;
     final bytes = await file.readAsBytes();
@@ -134,29 +133,22 @@ class _CameraConfig {
     required this.title,
     required this.guidance,
     this.aspectRatio = 4 / 3,
-    this.shape = CameraFrameShape.rect,
-    this.initialLens = CameraLensDirection.back,
     this.fillHeight = false,
+    this.resolutionPreset = ResolutionPreset.high,
   });
 
   final String title;
   final String guidance;
   final double aspectRatio;
-  final CameraFrameShape shape;
-  final CameraLensDirection initialLens;
 
   /// See [InAppCameraScreen.fillHeight].
   final bool fillHeight;
 
+  /// See [InAppCameraScreen.resolutionPreset].
+  final ResolutionPreset resolutionPreset;
+
   factory _CameraConfig.forPrefix(String prefix) {
     switch (prefix) {
-      case 'rep-photo':
-        return const _CameraConfig(
-          title: 'Representative photo',
-          guidance: 'Position the representative within the frame',
-          shape: CameraFrameShape.circle,
-          initialLens: CameraLensDirection.front,
-        );
       case 'id-front':
         return const _CameraConfig(
           title: 'Emirates ID — front',
@@ -177,6 +169,7 @@ class _CameraConfig {
           guidance: 'Position the cheque within the frame',
           aspectRatio: 2.1,
           fillHeight: true,
+          resolutionPreset: ResolutionPreset.veryHigh,
         );
       case 'cheque-scan-select':
         return const _CameraConfig(
@@ -184,6 +177,7 @@ class _CameraConfig {
           guidance: 'Position the cheque within the frame',
           aspectRatio: 2.1,
           fillHeight: true,
+          resolutionPreset: ResolutionPreset.veryHigh,
         );
       case 'voucher':
         return const _CameraConfig(

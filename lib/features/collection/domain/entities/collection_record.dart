@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import 'batch_cheque.dart';
 import 'collection_attachment.dart';
 
 /// A recorded cheque collection, in the full shape returned by
@@ -24,7 +25,6 @@ class CollectionRecord extends Equatable {
     this.currency = 'AED',
     this.repMobile = '',
     this.emiratesId = '',
-    this.collectorPhotoUrl,
     this.idFrontUrl,
     this.idBackUrl,
     this.chequePhotoUrl,
@@ -32,6 +32,8 @@ class CollectionRecord extends Equatable {
     this.voucherUrl,
     this.supportingDocuments = const [],
     this.newChequeStatus,
+    this.batchId,
+    this.batchCheques = const [],
   });
 
   final String id;
@@ -47,7 +49,6 @@ class CollectionRecord extends Equatable {
   final String repName;
   final String repMobile;
   final String emiratesId;
-  final String? collectorPhotoUrl;
   final String? idFrontUrl;
   final String? idBackUrl;
   final String? chequePhotoUrl;
@@ -61,6 +62,13 @@ class CollectionRecord extends Equatable {
   /// normal successful collection.
   final String? newChequeStatus;
 
+  /// Shared by cheques collected together in one visit; `null` for a
+  /// single-cheque collection.
+  final String? batchId;
+
+  /// The *other* cheques in the same batch; empty otherwise.
+  final List<BatchCheque> batchCheques;
+
   @override
   List<Object?> get props => [
         id,
@@ -72,7 +80,6 @@ class CollectionRecord extends Equatable {
         repName,
         repMobile,
         emiratesId,
-        collectorPhotoUrl,
         idFrontUrl,
         idBackUrl,
         chequePhotoUrl,
@@ -81,5 +88,7 @@ class CollectionRecord extends Equatable {
         supportingDocuments,
         timestamp,
         newChequeStatus,
+        batchId,
+        batchCheques,
       ];
 }

@@ -1,8 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../../core/utils/phone_country_codes.dart';
-import '../../../cheques/domain/entities/cheque.dart';
-import 'cheque_scan.dart';
+import 'collected_cheque.dart';
 import 'emirates_id_scan.dart';
 import 'vendor.dart';
 
@@ -17,16 +16,12 @@ class CollectionDraft extends Equatable {
     this.nameFromOcr = false,
     this.repMobile = '',
     this.repMobileCountryCode = defaultPhoneCountryCode,
-    this.repPhotoPath,
     this.idFrontPath,
     this.idBackPath,
     this.frontIdScan,
     this.backIdScan,
     this.isScanningId = false,
-    this.cheque,
-    this.chequeCopyPath,
-    this.isScanningChequeCopy = false,
-    this.chequeScan,
+    this.cheques = const [],
     this.voucherPath,
     this.supportingDocPaths = const [],
     this.consent = false,
@@ -47,7 +42,6 @@ class CollectionDraft extends Equatable {
   /// [CollectDraftNotifier.setRepMobile] detects one on a pasted/typed
   /// full number (see [detectPhoneCountryCode]).
   final String repMobileCountryCode;
-  final String? repPhotoPath;
 
   final String? idFrontPath;
   final String? idBackPath;
@@ -59,23 +53,10 @@ class CollectionDraft extends Equatable {
   final EmiratesIdScan? backIdScan;
   final bool isScanningId;
 
-  /// The real, currently-SIGNED cheque selected for this collection
-  /// (`GET /cheques?status=SIGNED&search=<vendor name>`). Its number,
-  /// amount and bank are server truth — they aren't retyped by the agent,
-  /// and aren't even sent in the submit request (only the cheque's id is —
-  /// the server already knows the rest).
-  final Cheque? cheque;
-  final String? chequeCopyPath;
-
-  /// True only while the just-captured/recaptured [chequeCopyPath] photo is
-  /// being OCR'd — used only to block [stepsDone] mid-scan, never surfaced
-  /// as a rejection.
-  final bool isScanningChequeCopy;
-
-  /// The on-device OCR read of [chequeCopyPath], checked against [cheque]'s
-  /// payee name — a non-blocking sanity check ("did you photograph the
-  /// right cheque?"), never [stepsDone]-gating. See [chequeScanWarnings].
-  final ChequeScan? chequeScan;
+  /// Every cheque being collected in this visit, each with its own photo
+  /// (see [CollectedCheque]). A cheque only enters this list once its photo
+  /// has been captured, so "one photo per cheque" holds by construction.
+  final List<CollectedCheque> cheques;
 
   /// Both fully optional — step 5 ("Voucher & documents") never appears in
   /// [stepsDone]/[missingStepNames], so neither field ever blocks Submit.
@@ -89,7 +70,10 @@ class CollectionDraft extends Equatable {
   /// completion is judged directly on this being non-null.
   final String? signaturePath;
 
-  static const stepNames = ['vendor', 'Emirates ID', 'representative details', 'a signed cheque', 'consent', 'signature'];
+  /// Server limit on cheques per request.
+  static const maxCheques = 25;
+
+  static const stepNames = ['vendor', 'Emirates ID', 'representative details', 'a signed cheque with its photo', 'consent', 'signature'];
 
   bool get isMobileValid {
     final expectedLength = phoneCountryCodes[repMobileCountryCode] ?? 9;
@@ -124,25 +108,15 @@ class CollectionDraft extends Equatable {
   /// never true while a scan is still in flight.
   bool get idFrontOcrFailed => frontIdScan != null && frontIdScan!.idNumber.isEmpty;
 
-  double get amountValue => cheque?.amount ?? 0;
-
-  /// Non-blocking sanity warning from [chequeScan] against the actually
-  /// selected [cheque]'s vendor — [cheque] (not the scan) is what gets
-  /// submitted, so this never gates [stepsDone]; it's surfaced only so the
-  /// agent can catch photographing the wrong cheque.
-  List<String> get chequeScanWarnings {
-    final scan = chequeScan;
-    if (scan == null || cheque == null) return [];
-    return [
-      if (scan.nameMatched == false)
-        "Couldn't find this vendor's name on the photographed cheque.",
-    ];
-  }
+  /// Sum of every selected cheque's amount.
+  double get amountValue => cheques.fold(0, (sum, c) => sum + c.cheque.amount);
 
   /// One flag per numbered step on the collect screen, in display order.
-  /// Step 4 ("Cheque") requires both picking a real SIGNED cheque and
-  /// capturing its photo — the OCR check behind [chequeScanWarnings] is a
-  /// non-blocking sanity check only, unlike [isScanningChequeCopy].
+  /// Step 4 ("Cheques") requires at least one real SIGNED cheque, and for
+  /// every one its own photo plus either a MICR read confirming its number
+  /// or the agent's manual confirmation ([CollectedCheque.isDone]). The
+  /// vendor-name check behind [CollectedCheque.scanWarnings] stays
+  /// non-blocking.
   List<bool> get stepsDone => [
         vendor != null,
         idFrontPath != null &&
@@ -151,8 +125,8 @@ class CollectionDraft extends Equatable {
             idScan!.idNumber.isNotEmpty &&
             idScan!.name.isNotEmpty &&
             !isScanningId,
-        repName.trim().isNotEmpty && isMobileValid && repPhotoPath != null,
-        cheque != null && chequeCopyPath != null && !isScanningChequeCopy,
+        repName.trim().isNotEmpty && isMobileValid,
+        cheques.isNotEmpty && cheques.every((c) => c.isDone),
         consent,
         signaturePath != null,
       ];
@@ -170,16 +144,12 @@ class CollectionDraft extends Equatable {
     bool? nameFromOcr,
     String? repMobile,
     String? repMobileCountryCode,
-    String? Function()? repPhotoPath,
     String? Function()? idFrontPath,
     String? Function()? idBackPath,
     EmiratesIdScan? Function()? frontIdScan,
     EmiratesIdScan? Function()? backIdScan,
     bool? isScanningId,
-    Cheque? Function()? cheque,
-    String? Function()? chequeCopyPath,
-    bool? isScanningChequeCopy,
-    ChequeScan? Function()? chequeScan,
+    List<CollectedCheque>? cheques,
     String? Function()? voucherPath,
     List<String>? supportingDocPaths,
     bool? consent,
@@ -191,16 +161,12 @@ class CollectionDraft extends Equatable {
       nameFromOcr: nameFromOcr ?? this.nameFromOcr,
       repMobile: repMobile ?? this.repMobile,
       repMobileCountryCode: repMobileCountryCode ?? this.repMobileCountryCode,
-      repPhotoPath: repPhotoPath != null ? repPhotoPath() : this.repPhotoPath,
       idFrontPath: idFrontPath != null ? idFrontPath() : this.idFrontPath,
       idBackPath: idBackPath != null ? idBackPath() : this.idBackPath,
       frontIdScan: frontIdScan != null ? frontIdScan() : this.frontIdScan,
       backIdScan: backIdScan != null ? backIdScan() : this.backIdScan,
       isScanningId: isScanningId ?? this.isScanningId,
-      cheque: cheque != null ? cheque() : this.cheque,
-      chequeCopyPath: chequeCopyPath != null ? chequeCopyPath() : this.chequeCopyPath,
-      isScanningChequeCopy: isScanningChequeCopy ?? this.isScanningChequeCopy,
-      chequeScan: chequeScan != null ? chequeScan() : this.chequeScan,
+      cheques: cheques ?? this.cheques,
       voucherPath: voucherPath != null ? voucherPath() : this.voucherPath,
       supportingDocPaths: supportingDocPaths ?? this.supportingDocPaths,
       consent: consent ?? this.consent,
@@ -215,16 +181,12 @@ class CollectionDraft extends Equatable {
         nameFromOcr,
         repMobile,
         repMobileCountryCode,
-        repPhotoPath,
         idFrontPath,
         idBackPath,
         frontIdScan,
         backIdScan,
         isScanningId,
-        cheque,
-        chequeCopyPath,
-        isScanningChequeCopy,
-        chequeScan,
+        cheques,
         voucherPath,
         supportingDocPaths,
         consent,

@@ -13,6 +13,7 @@ class ChequeScan extends Equatable {
     this.chequeNumber,
     this.amount,
     this.nameMatched,
+    this.micrChequeNumber,
   });
 
   final String detectedCurrency;
@@ -26,6 +27,14 @@ class ChequeScan extends Equatable {
   /// when no name was passed to [ChequeOcrService.scan] to check against.
   final bool? nameMatched;
 
+  /// The cheque number as read from the bottom MICR band specifically —
+  /// `null` when no band could be read. Populated regardless of [accepted]
+  /// (the band doesn't depend on the currency), and deliberately separate
+  /// from [chequeNumber], which may have come from the corner print instead.
+  /// A null here is what sends the agent to a manual cheque-number check.
+  final String? micrChequeNumber;
+
   @override
-  List<Object?> get props => [detectedCurrency, accepted, bank, confidence, chequeNumber, amount, nameMatched];
+  List<Object?> get props =>
+      [detectedCurrency, accepted, bank, confidence, chequeNumber, amount, nameMatched, micrChequeNumber];
 }

@@ -51,6 +51,23 @@ class MlKitChequeOcrService implements ChequeOcrService {
     'Al Hilal Bank',
   ];
 
+  /// Short names/wordmarks some leaves print instead of the full name in
+  /// [_banks] — a leaf showing only a "FAB" logo line otherwise matches
+  /// nothing. Matched on word boundaries (unlike the full names), since
+  /// three-letter codes like "CBD"/"DIB" would otherwise hit inside
+  /// unrelated words.
+  static const _bankAliases = {
+    'Emirates NBD': ['ENBD'],
+    'First Abu Dhabi Bank': ['FAB'],
+    'Mashreq Bank': ['MASHREQ'],
+    'Abu Dhabi Commercial Bank': ['ADCB'],
+    'Abu Dhabi Islamic Bank': ['ADIB'],
+    'Dubai Islamic Bank': ['DIB'],
+    'RAKBANK': ['RAK BANK', 'NATIONAL BANK OF RAS AL KHAIMAH'],
+    'Commercial Bank of Dubai': ['CBD'],
+    'National Bank of Fujairah': ['NBF'],
+  };
+
   /// Comma-grouped ("12,500.00") or plain-decimal ("12500.00") amounts —
   /// deliberately excludes plain integer runs, which on a cheque are far
   /// more likely to be the cheque/account/MICR number than the amount.
@@ -99,6 +116,12 @@ class MlKitChequeOcrService implements ChequeOcrService {
   static const _cornerMaxY = 0.28;
   static const _micrMinY = 0.82;
 
+  /// Where the MICR re-read crop starts — deliberately higher than
+  /// [_micrMinY], because that threshold is applied to line *centers* while
+  /// the crop has to contain the band's full glyph height with room to spare
+  /// on a slightly skewed leaf. [_micrRowText] picks the band back out.
+  static const _micrCropMinY = 0.72;
+
   @override
   Future<ChequeScan> scan(String imagePath, {String? expectedPayeeName}) async {
     final firstPass = await _recognize(imagePath);
@@ -116,22 +139,42 @@ class MlKitChequeOcrService implements ChequeOcrService {
     // the fix is to correct the image orientation once and re-read rather
     // than to brute-force both rotations on every scan.
     var reading = _ChequeReading.from(firstPass);
+    // The image [reading]'s bounding boxes refer to — the original photo
+    // unless a rotated working copy read better. Null means "load
+    // [imagePath]" (deferred, since a clean first pass never needs it).
+    Uint8List? readingBytes;
     if (_looksRotated(firstPass) || !reading.hasChequeNumber) {
       final corrected = await _readWithOrientationCorrection(imagePath);
-      if (corrected != null && corrected.fieldsFound > reading.fieldsFound) {
-        reading = corrected;
+      if (corrected != null && corrected.reading.fieldsFound > reading.fieldsFound) {
+        reading = corrected.reading;
+        readingBytes = corrected.bytes;
       }
     }
+
+    reading = await _refineWithRegionCrops(
+      reading,
+      () async => readingBytes ?? await _readPhoto(imagePath),
+    );
 
     final nameMatched = expectedPayeeName == null
         ? null
         : _payeeNameFound(reading.flatText, expectedPayeeName);
 
+    // Reported on its own (and even for a rejected currency) so the caller
+    // can tell "MICR band read" apart from "a number was found somewhere".
+    final micrChequeNumber = _parseMicrBand(reading.micrBandText);
+
     final bank = _detectBank(reading.flatText);
     final currency = _detectCurrency(reading.flatText.toUpperCase(), bank);
 
     if (currency != 'AED' && currency != 'USD') {
-      return ChequeScan(detectedCurrency: currency, accepted: false, bank: bank, nameMatched: nameMatched);
+      return ChequeScan(
+        detectedCurrency: currency,
+        accepted: false,
+        bank: bank,
+        nameMatched: nameMatched,
+        micrChequeNumber: micrChequeNumber,
+      );
     }
 
     final chequeNumber = _resolveChequeNumber(reading);
@@ -156,6 +199,7 @@ class MlKitChequeOcrService implements ChequeOcrService {
       chequeNumber: chequeNumber.value ?? '',
       amount: amount ?? 0,
       nameMatched: nameMatched,
+      micrChequeNumber: micrChequeNumber,
     );
   }
 
@@ -213,20 +257,28 @@ class MlKitChequeOcrService implements ChequeOcrService {
     }
   }
 
+  Future<Uint8List?> _readPhoto(String imagePath) async {
+    try {
+      return await File(imagePath).readAsBytes();
+    } catch (e) {
+      debugPrint('Cheque OCR: could not read photo: $e');
+      return null;
+    }
+  }
+
   /// Bakes EXIF orientation, downscales, and tries 90°/270° on a working copy,
   /// keeping whichever pass locates the most fields. Runs only when the first
   /// pass looked rotated or found no cheque number, so most scans never reach
-  /// this path.
-  Future<_ChequeReading?> _readWithOrientationCorrection(String imagePath) async {
-    final Uint8List original;
-    try {
-      original = await File(imagePath).readAsBytes();
-    } catch (e) {
-      debugPrint('Cheque OCR orientation pass: could not read photo: $e');
-      return null;
-    }
+  /// this path. Returns the winning copy's bytes alongside its reading, since
+  /// that reading's boxes are in the rotated copy's coordinates, not the
+  /// original photo's.
+  Future<({_ChequeReading reading, Uint8List bytes})?> _readWithOrientationCorrection(
+    String imagePath,
+  ) async {
+    final original = await _readPhoto(imagePath);
+    if (original == null) return null;
 
-    _ChequeReading? best;
+    ({_ChequeReading reading, Uint8List bytes})? best;
     for (final angle in const [90, 270]) {
       final bytes = await compute(
         _bakeRotateAndResize,
@@ -234,30 +286,143 @@ class MlKitChequeOcrService implements ChequeOcrService {
       );
       if (bytes == null) continue;
 
-      final path = await _writeTempCopy(bytes, angle);
-      try {
-        final recognized = await _recognize(path);
-        if (recognized == null) continue;
-        final reading = _ChequeReading.from(recognized);
-        if (best == null || reading.fieldsFound > best.fieldsFound) {
-          best = reading;
-        }
-        // A pass that already found the cheque number is good enough; skip
-        // the second rotation rather than paying for another OCR call.
-        if (reading.hasChequeNumber) break;
-      } finally {
-        File(path).delete().ignore();
+      final recognized = await _recognizeBytes(bytes, 'rotated-$angle');
+      if (recognized == null) continue;
+      final reading = _ChequeReading.from(recognized);
+      if (best == null || reading.fieldsFound > best.reading.fieldsFound) {
+        best = (reading: reading, bytes: bytes);
       }
+      // A pass that already found the cheque number is good enough; skip
+      // the second rotation rather than paying for another OCR call.
+      if (reading.hasChequeNumber) break;
     }
     return best;
   }
 
-  Future<String> _writeTempCopy(Uint8List bytes, int angle) async {
+  /// Re-reads the MICR band and the corner number from enlarged, greyscale
+  /// crops of the photo — ML Kit reads small text far better when it fills
+  /// the frame than as a thin strip of a whole-leaf pass, which matters most
+  /// for the E-13B band's narrow glyphs.
+  ///
+  /// Skipped when the full-leaf pass already produced a corner number and a
+  /// MICR number that agree (nothing to improve on). Otherwise only the
+  /// region(s) that are missing or in dispute are re-read, and a crop's text
+  /// replaces the full-leaf text for that region only when it parses to a
+  /// plausible cheque number — a crop can add a read, never erase one.
+  Future<_ChequeReading> _refineWithRegionCrops(
+    _ChequeReading reading,
+    Future<Uint8List?> Function() loadBytes,
+  ) async {
+    if (reading.lines.isEmpty) return reading;
+
+    final corner = _chequeNumberFromCornerText(reading.cornerText);
+    final micr = _parseMicrBand(reading.micrBandText);
+    if (corner != null && micr != null && _sameNumber(corner, micr)) return reading;
+
+    // Missing, or disagreeing with a value from the other region.
+    final refineMicr = micr == null || corner != null;
+    final refineCorner = corner == null || micr != null;
+
+    final bytes = await loadBytes();
+    if (bytes == null) return reading;
+
+    final env = reading.envelope;
+    final w = env.width;
+    final h = env.height;
+    final specs = [
+      if (refineMicr)
+        _CropSpec(
+          left: env.left - w * 0.03,
+          top: env.top + h * _micrCropMinY,
+          right: env.right + w * 0.03,
+          bottom: env.bottom + h * 0.08,
+          targetWidth: 1800,
+        ),
+      if (refineCorner)
+        _CropSpec(
+          left: env.left + w * 0.5,
+          top: env.top - h * 0.05,
+          right: env.right + w * 0.03,
+          bottom: env.top + h * 0.32,
+          targetWidth: 1200,
+        ),
+    ];
+
+    final crops = await compute(_cropRegions, _CropRequest(bytes: bytes, specs: specs));
+
+    var micrBandText = reading.micrBandText;
+    var cornerText = reading.cornerText;
+    var index = 0;
+
+    if (refineMicr) {
+      final crop = crops[index++];
+      final recognized = crop == null ? null : await _recognizeBytes(crop, 'micr');
+      if (recognized != null) {
+        final text = _micrRowText(recognized);
+        if (_parseMicrBand(text) != null) micrBandText = text;
+        _debugLog('MICR crop read: "$text"');
+      }
+    }
+    if (refineCorner) {
+      final crop = crops[index++];
+      final recognized = crop == null ? null : await _recognizeBytes(crop, 'corner');
+      if (recognized != null) {
+        final text = _linesInReadingOrder(recognized).map((l) => l.text).join(' ');
+        if (_chequeNumberFromCornerText(text) != null) cornerText = text;
+        _debugLog('Corner crop read: "$text"');
+      }
+    }
+
+    return reading.withRegions(cornerText: cornerText, micrBandText: micrBandText);
+  }
+
+  /// The MICR crop overlaps the signature/amount-in-words area above the
+  /// band, so its text isn't all band. The band is the row with the most
+  /// digits on it; lines sharing that row (ML Kit often splits the band at
+  /// the E-13B symbols) are joined left-to-right.
+  static String _micrRowText(RecognizedText recognized) {
+    final lines = _linesInReadingOrder(recognized);
+    if (lines.isEmpty) return '';
+    int digits(_PositionedLine l) => l.text.replaceAll(RegExp(r'\D'), '').length;
+
+    final best = lines.reduce((a, b) => digits(b) > digits(a) ? b : a);
+    if (digits(best) == 0) return '';
+    final tolerance = best.box.height * 0.6;
+    final row = lines
+        .where((l) => (l.box.center.dy - best.box.center.dy).abs() <= tolerance)
+        .toList()
+      ..sort((a, b) => a.box.left.compareTo(b.box.left));
+    return row.map((l) => l.text).join(' ');
+  }
+
+  static List<_PositionedLine> _linesInReadingOrder(RecognizedText recognized) {
+    final lines = [
+      for (final block in recognized.blocks)
+        for (final line in block.lines)
+          if (line.text.trim().isNotEmpty)
+            _PositionedLine(text: line.text.trim(), box: line.boundingBox),
+    ];
+    lines.sort((a, b) {
+      final dy = a.box.top.compareTo(b.box.top);
+      return dy != 0 ? dy : a.box.left.compareTo(b.box.left);
+    });
+    return lines;
+  }
+
+  /// OCRs in-memory [bytes] via a throwaway temp file (ML Kit only takes a
+  /// path or a camera frame), deleting it whatever the outcome.
+  Future<RecognizedText?> _recognizeBytes(Uint8List bytes, String tag) async {
     final dir = await getTemporaryDirectory();
-    final path =
-        '${dir.path}/cheque-rotated-$angle-${DateTime.now().microsecondsSinceEpoch}.jpg';
-    await File(path).writeAsBytes(bytes);
-    return path;
+    final path = '${dir.path}/cheque-$tag-${DateTime.now().microsecondsSinceEpoch}.jpg';
+    try {
+      await File(path).writeAsBytes(bytes);
+      return await _recognize(path);
+    } catch (e) {
+      debugPrint('Cheque OCR $tag pass failed: $e');
+      return null;
+    } finally {
+      File(path).delete().ignore();
+    }
   }
 
   /// Horizontal text produces lines that are much wider than they are tall.
@@ -323,8 +488,10 @@ class MlKitChequeOcrService implements ChequeOcrService {
     return trimmedA == trimmedB;
   }
 
-  String? _fromCornerRegion(_ChequeReading reading) {
-    final text = reading.cornerText;
+  String? _fromCornerRegion(_ChequeReading reading) =>
+      _chequeNumberFromCornerText(reading.cornerText);
+
+  String? _chequeNumberFromCornerText(String text) {
     if (text.isEmpty) return null;
 
     final labelled = _labelledChequeNumberPattern
@@ -430,6 +597,13 @@ class MlKitChequeOcrService implements ChequeOcrService {
     final upper = text.toUpperCase();
     for (final bank in _banks) {
       if (upper.contains(bank.toUpperCase())) return bank;
+    }
+    // Full names first — they're unambiguous, so a leaf that prints both
+    // the name and a short code resolves on the name.
+    for (final MapEntry(key: bank, value: aliases) in _bankAliases.entries) {
+      for (final alias in aliases) {
+        if (RegExp('\\b${RegExp.escape(alias)}\\b').hasMatch(upper)) return bank;
+      }
     }
     return null;
   }
@@ -633,6 +807,18 @@ class _ChequeReading {
   final String micrBandText;
   final Rect? currencyAnchor;
 
+  /// Same reading with the corner/MICR text replaced by an enlarged-crop
+  /// re-read (see `MlKitChequeOcrService._refineWithRegionCrops`).
+  _ChequeReading withRegions({required String cornerText, required String micrBandText}) =>
+      _ChequeReading._(
+        lines: lines,
+        envelope: envelope,
+        flatText: flatText,
+        cornerText: cornerText,
+        micrBandText: micrBandText,
+        currencyAnchor: currencyAnchor,
+      );
+
   bool get hasChequeNumber =>
       cornerText.isNotEmpty || micrBandText.isNotEmpty;
 
@@ -713,4 +899,78 @@ Uint8List? _bakeRotateAndResize(_RotateRequest request) {
     // contributes no candidate, which the caller already handles.
     return null;
   }
+}
+/// One region to cut out of the photo, in the photo's pixel coordinates
+/// (unclamped — [_cropRegions] clips it to the image).
+class _CropSpec {
+  const _CropSpec({
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
+    required this.targetWidth,
+  });
+
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
+
+  /// Width the crop is enlarged towards (never shrunk, and capped at
+  /// [_cropMaxScale]x so a tiny crop isn't blown up into mush).
+  final int targetWidth;
+}
+
+class _CropRequest {
+  const _CropRequest({required this.bytes, required this.specs});
+
+  final Uint8List bytes;
+  final List<_CropSpec> specs;
+}
+
+const _cropMaxScale = 2.5;
+
+/// Runs on a background isolate via [compute]. Decodes the photo once and
+/// returns one greyscale, enlarged JPEG per spec, in order — `null` for a
+/// spec that falls outside the image. Must stay top-level for [compute].
+List<Uint8List?> _cropRegions(_CropRequest request) {
+  try {
+    final decoded = img.decodeImage(request.bytes);
+    if (decoded == null) return List.filled(request.specs.length, null);
+    // Same EXIF handling as [_bakeRotateAndResize], so crop coordinates
+    // line up with the boxes ML Kit reported for this image.
+    final image = img.bakeOrientation(decoded);
+
+    return [
+      for (final spec in request.specs) _cropOne(image, spec),
+    ];
+  } catch (_) {
+    return List.filled(request.specs.length, null);
+  }
+}
+
+Uint8List? _cropOne(img.Image image, _CropSpec spec) {
+  final left = spec.left.clamp(0, image.width - 1).round();
+  final top = spec.top.clamp(0, image.height - 1).round();
+  final right = spec.right.clamp(0, image.width.toDouble()).round();
+  final bottom = spec.bottom.clamp(0, image.height.toDouble()).round();
+  final width = right - left;
+  final height = bottom - top;
+  if (width < 16 || height < 16) return null;
+
+  var crop = img.copyCrop(image, x: left, y: top, width: width, height: height);
+  final scale = (spec.targetWidth / width).clamp(1.0, _cropMaxScale);
+  if (scale > 1.0) {
+    crop = img.copyResize(
+      crop,
+      width: (width * scale).round(),
+      height: (height * scale).round(),
+      interpolation: img.Interpolation.cubic,
+    );
+  }
+  // Greyscale plus a mild contrast lift: strips the coloured security
+  // pattern printed behind the band/number without binarizing, which
+  // would eat thin strokes on an unevenly lit photo.
+  crop = img.adjustColor(img.grayscale(crop), contrast: 1.25);
+  return Uint8List.fromList(img.encodeJpg(crop, quality: 95));
 }

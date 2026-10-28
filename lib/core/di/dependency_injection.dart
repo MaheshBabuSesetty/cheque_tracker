@@ -13,6 +13,7 @@ import '../../features/auth/data/datasources/azure_ad_sso_data_source.dart';
 import '../../features/auth/data/repositories/auth_repository_impl.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
 import '../../features/auth/domain/repositories/sso_auth_service.dart';
+import '../../features/collection/data/datasources/bulk_collection_flag.dart';
 import '../../features/collection/data/datasources/collection_remote_data_source.dart';
 import '../../features/collection/data/datasources/mlkit_cheque_ocr_service.dart';
 import '../../features/collection/data/datasources/mlkit_emirates_id_ocr_service.dart';
@@ -33,7 +34,6 @@ import '../../services/image_capture_service.dart';
 import '../routing/app_router.dart';
 import '../../services/notification_service.dart';
 import '../../services/storage_service.dart';
-import '../../services/version_check_service.dart';
 import '../network/dio_client.dart';
 import '../network/network_info.dart';
 import '../network/token_refresh_client.dart';
@@ -97,25 +97,10 @@ final sessionEventsProvider = Provider<SessionEvents>((ref) {
   return events;
 });
 
-// A deliberately separate, bare Dio — NOT `unauthenticatedDioClientProvider`
-// — because that client now carries certificate pinning (pentest V-13) for
-// this app's own API host, and Dio resolves an absolute URL (as
-// `LoadlyVersionCheckService` passes for the loadly.io share page) without
-// going through `baseUrl`. Sharing the pinned client here previously meant
-// every version check to loadly.io was silently rejected the moment pins
-// went live for an environment, since loadly.io's certificate can never
-// match a fingerprint pinned to the API host — found during a security
-// review, fixed by giving this its own unpinned client instead.
-final versionCheckServiceProvider = Provider<VersionCheckService>((ref) {
-  return LoadlyVersionCheckService(Dio());
-});
-
 // Login/refresh/logout never carry (or need) the bearer token, and must
 // never trigger `AuthInterceptor`'s refresh-on-401 logic — they run on this
 // separate, interceptor-free client instead. Also carries certificate
-// pinning (pentest V-13) for this app's own API host — see
-// `versionCheckServiceProvider` above for why the loadly.io version check
-// deliberately does NOT share this client.
+// pinning (pentest V-13) for this app's own API host.
 final unauthenticatedDioClientProvider = Provider<Dio>((ref) {
   return UnauthenticatedDioClient().dio;
 });
@@ -197,8 +182,12 @@ final chequeRepositoryProvider = Provider<ChequeRepository>((ref) {
   return ChequeRepositoryImpl(ref.watch(chequeRemoteDataSourceProvider));
 });
 
+final bulkCollectionFlagProvider = Provider<BulkCollectionFlag>((ref) {
+  return BulkCollectionFlag(ref.watch(dioClientProvider));
+});
+
 final collectionRemoteDataSourceProvider = Provider<CollectionRemoteDataSource>((ref) {
-  return CollectionRemoteDataSourceImpl(ref.watch(dioClientProvider));
+  return CollectionRemoteDataSourceImpl(ref.watch(dioClientProvider), ref.watch(bulkCollectionFlagProvider));
 });
 
 final collectionRepositoryProvider = Provider<CollectionRepository>((ref) {

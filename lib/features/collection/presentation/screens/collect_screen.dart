@@ -11,6 +11,7 @@ import '../../../../core/widgets/app_primary_button.dart';
 import '../../../../core/widgets/responsive_content.dart';
 import '../../../auth/presentation/providers/auth_notifier.dart';
 import '../../../cheques/domain/entities/cheque.dart';
+import '../../domain/entities/collected_cheque.dart';
 import '../../domain/entities/collection_draft.dart';
 import '../../domain/entities/collection_record.dart';
 import '../../domain/entities/vendor.dart';
@@ -42,9 +43,9 @@ class CollectScreen extends ConsumerWidget {
       return const _NotAuthorizedView();
     }
 
-    final lastRecord = ref.watch(lastSubmittedRecordProvider);
-    if (lastRecord != null) {
-      return _CollectionSuccessView(record: lastRecord);
+    final lastRecords = ref.watch(lastSubmittedRecordProvider);
+    if (lastRecords != null && lastRecords.isNotEmpty) {
+      return _CollectionSuccessView(records: lastRecords);
     }
     return const _CollectForm();
   }
@@ -109,14 +110,15 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
 
   Future<void> _confirmSubmit() async {
     final colors = context.semanticColors;
+    final count = ref.read(collectDraftProvider).cheques.length;
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('Submit this collection?'),
+        title: Text(count == 1 ? 'Submit this collection?' : 'Submit this collection of $count cheques?'),
         content: Text(
-          "This sends the cheque, Emirates ID, photos and signature to the web record. You won't be able to edit it from here afterwards.",
+          "This sends the ${count == 1 ? 'cheque' : 'cheques'}, Emirates ID, photos and signature to the web record. You won't be able to edit it from here afterwards.",
           style: TextStyle(fontSize: 13, color: colors.textMuted),
         ),
         actions: [
@@ -136,11 +138,17 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
 
   Future<void> _handleSubmit() async {
     setState(() => _submitting = true);
-    final record = await ref.read(collectDraftProvider.notifier).submit();
+    final outcome = await ref.read(collectDraftProvider.notifier).submit();
     if (!mounted) return;
     setState(() => _submitting = false);
-    if (record != null) {
-      ref.read(lastSubmittedRecordProvider.notifier).set(record);
+    if (outcome == null) return;
+    final records = outcome.records;
+    if (records != null) {
+      ref.read(lastSubmittedRecordProvider.notifier).set(records);
+    } else if (outcome.error != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(outcome.error!), duration: const Duration(seconds: 8)));
     }
   }
 
@@ -233,7 +241,7 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
                 ),
                 StepCard(
                   number: 4,
-                  title: 'Cheque',
+                  title: 'Cheques',
                   done: done[3],
                   child: _ChequeStep(draft: draft, notifier: notifier),
                 ),
@@ -432,46 +440,6 @@ class _RepresentativeStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CaptureTile(
-              imagePath: draft.repPhotoPath,
-              icon: Icon(Icons.person_outline, size: 22, color: colors.accent),
-              label: '',
-              size: 62,
-              circular: true,
-              onTap: notifier.captureRepPhoto,
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Photo of representative',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    draft.repPhotoPath != null
-                        ? 'Photo captured. Tap to retake.'
-                        : 'Tap the frame to open the camera. Gallery uploads are not allowed.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colors.textMuted,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 13),
         TextField(
           controller: repNameController,
           onChanged: notifier.setRepName,
@@ -852,22 +820,28 @@ class _ChequeStepState extends State<_ChequeStep> {
 
   void _onManualNumberChanged() => setState(() {});
 
-  /// Captures a photo of the cheque, then matches the typed number
-  /// against the vendor's SIGNED cheques — no OCR is run on the photo.
-  /// On a match, `draft.cheque` becomes non-null and the step swaps to
-  /// `_ChequePhotoStep`, already showing the photo just taken.
-  Future<void> _captureAndSelect(Vendor vendor) async {
+  /// Matches the typed number against the vendor's SIGNED cheques, then
+  /// captures a photo of that cheque and adds both to the draft — no OCR is
+  /// run to find the cheque. The field clears on success, ready for the
+  /// next cheque.
+  Future<void> _captureAndAdd(Vendor vendor) async {
     final number = _manualNumberController.text.trim();
     if (number.isEmpty) return;
     setState(() {
       _capturing = true;
       _error = null;
     });
-    final matched = await widget.notifier.captureAndSelectCheque(vendor: vendor, number: number);
+    final result = await widget.notifier.captureAndAddCheque(vendor: vendor, number: number);
     if (!mounted) return;
     setState(() {
       _capturing = false;
-      _error = matched == false ? 'No SIGNED cheque on file matches that number.' : null;
+      _error = switch (result) {
+        ChequeAddResult.notFound => 'No SIGNED cheque on file matches that number.',
+        ChequeAddResult.alreadyAdded => 'This cheque is already added to this collection.',
+        ChequeAddResult.limitReached => 'A collection can include at most ${CollectionDraft.maxCheques} cheques.',
+        _ => null,
+      };
+      if (result == ChequeAddResult.added) _manualNumberController.clear();
     });
   }
 
@@ -877,292 +851,549 @@ class _ChequeStepState extends State<_ChequeStep> {
     final draft = widget.draft;
     final notifier = widget.notifier;
     final vendor = draft.vendor;
-    final cheque = draft.cheque;
+    final entries = draft.cheques;
+    final hasTypedNumber = _manualNumberController.text.trim().isNotEmpty;
+    final canCapture = vendor != null && !_capturing && hasTypedNumber;
 
-    if (cheque == null) {
-      final hasTypedNumber = _manualNumberController.text.trim().isNotEmpty;
-      final canCapture = vendor != null && !_capturing && hasTypedNumber;
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < entries.length; i++) ...[
+          _ChequePhotoStep(
+            key: ValueKey(entries[i].cheque.id),
+            index: i + 1,
+            total: entries.length,
+            entry: entries[i],
+            hasSharedVoucher: draft.voucherPath != null,
+            notifier: notifier,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (entries.length > 1) ...[
+          _ChequeTotalRow(count: entries.length, total: draft.amountValue),
+          const SizedBox(height: 12),
+        ],
+        Text(
+          vendor == null
+              ? 'Pick a vendor in step 1 first.'
+              : entries.isEmpty
+                  ? "Type this vendor's SIGNED cheque number, then capture a photo of it."
+                  : 'Collecting more than one? Type the next cheque number and capture its own photo.',
+          style: TextStyle(
+            fontSize: 11,
+            color: colors.textMuted,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _manualNumberController,
+          textCapitalization: TextCapitalization.characters,
+          enabled: vendor != null && !_capturing,
+          decoration: const InputDecoration(
+            isDense: true,
+            hintText: 'Type the cheque number',
+          ),
+          onSubmitted: canCapture ? (_) => _captureAndAdd(vendor) : null,
+        ),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: canCapture ? () => _captureAndAdd(vendor) : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 13),
+            decoration: BoxDecoration(
+              color: canCapture ? colors.neutralTint : colors.placeholderBg,
+              border: Border.all(
+                color: canCapture ? colors.neutralTintBorder : colors.inputBorder,
+              ),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Row(
+              children: [
+                if (_capturing)
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colors.accent,
+                    ),
+                  )
+                else
+                  Icon(
+                    entries.isEmpty ? Icons.photo_camera_outlined : Icons.add_a_photo_outlined,
+                    size: 18,
+                    color: canCapture ? colors.accent : colors.textMuted,
+                  ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _capturing
+                        ? 'Capturing…'
+                        : entries.isEmpty
+                            ? 'Capture cheque image'
+                            : 'Add another cheque',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: canCapture ? colors.bodyText : colors.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 7),
           Text(
-            vendor == null
-                ? 'Pick a vendor in step 1 first.'
-                : "Type this vendor's SIGNED cheque number, then capture a photo of it.",
+            _error!,
             style: TextStyle(
               fontSize: 11,
-              color: colors.textMuted,
-              height: 1.45,
+              color: colors.danger,
+              fontWeight: FontWeight.w600,
+              height: 1.4,
             ),
           ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _manualNumberController,
-            textCapitalization: TextCapitalization.characters,
-            enabled: vendor != null && !_capturing,
-            decoration: const InputDecoration(
-              isDense: true,
-              hintText: 'Type the cheque number',
-            ),
-            onSubmitted: canCapture ? (_) => _captureAndSelect(vendor) : null,
+        ],
+      ],
+    );
+  }
+}
+
+/// "N cheques · AED total" line under the cheque cards.
+class _ChequeTotalRow extends StatelessWidget {
+  const _ChequeTotalRow({required this.count, required this.total});
+
+  final int count;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    final amount = NumberFormat.currency(locale: 'en_US', symbol: '', decimalDigits: 0).format(total).trim();
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            '$count CHEQUES',
+            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: colors.textMuted, letterSpacing: 0.3),
           ),
-          const SizedBox(height: 10),
-          GestureDetector(
-            onTap: canCapture ? () => _captureAndSelect(vendor) : null,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 13),
-              decoration: BoxDecoration(
-                color: canCapture ? colors.neutralTint : colors.placeholderBg,
-                border: Border.all(
-                  color: canCapture ? colors.neutralTintBorder : colors.inputBorder,
+        ),
+        Text(
+          'Total AED $amount',
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+}
+
+/// One collected cheque: its details, its own photo, and the checks run on
+/// that photo. Several of these stack up when a vendor hands over more than
+/// one cheque.
+class _ChequePhotoStep extends StatelessWidget {
+  const _ChequePhotoStep({
+    super.key,
+    required this.index,
+    required this.total,
+    required this.entry,
+    required this.hasSharedVoucher,
+    required this.notifier,
+  });
+
+  final int index;
+  final int total;
+  final CollectedCheque entry;
+  final bool hasSharedVoucher;
+  final CollectDraftNotifier notifier;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    final cheque = entry.cheque;
+    final scanning = entry.isScanning;
+    final warnings = entry.scanWarnings;
+    final hasScan = !scanning && entry.scan != null;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.surfaceBorder),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  total > 1 ? 'CHEQUE $index OF $total · ${cheque.bank}' : cheque.bank,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colors.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+              ),
+              TextButton(
+                onPressed: () => notifier.removeCheque(cheque.id),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                ),
+                child: Text(
+                  'Remove',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: colors.textMuted,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ChequeInfoField(
+                label: 'CHEQUE NO.',
+                value: cheque.chequeNumber,
+                monospace: true,
+              ),
+              const SizedBox(width: 10),
+              _ChequeInfoField(
+                label: 'AMOUNT (AED)',
+                value: NumberFormat.currency(
+                  locale: 'en_US',
+                  symbol: '',
+                  decimalDigits: 0,
+                ).format(cheque.amount).trim(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => notifier.recaptureChequePhoto(cheque.id),
+            child: _DashedCaptureBox(
+              imagePath: entry.photoPath,
+              icon: Icons.receipt_long_outlined,
+              label: 'Capture or attach cheque copy',
+              filledLabel: 'CHEQUE COPY CAPTURED',
+            ),
+          ),
+          if (scanning) ...[
+            const SizedBox(height: 11),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+              decoration: BoxDecoration(
+                color: colors.pendingBg,
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Row(
                 children: [
-                  if (_capturing)
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colors.accent,
-                      ),
-                    )
-                  else
-                    Icon(
-                      Icons.photo_camera_outlined,
-                      size: 18,
-                      color: canCapture ? colors.accent : colors.textMuted,
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colors.accent,
                     ),
-                  const SizedBox(width: 10),
+                  ),
+                  const SizedBox(width: 9),
+                  Text(
+                    'Checking cheque photo…',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: colors.accent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (hasScan && warnings.isEmpty) ...[
+            const SizedBox(height: 11),
+            Container(
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: colors.matchedBg,
+                border: Border.all(color: colors.matchedBorder),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    '✓',
+                    style: TextStyle(
+                      color: colors.success,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      _capturing ? 'Capturing…' : 'Capture cheque image',
+                      "Photo matches the selected cheque's vendor.",
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color: canCapture ? colors.bodyText : colors.textMuted,
+                        color: colors.success,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 7),
-            Text(
-              _error!,
-              style: TextStyle(
-                fontSize: 11,
-                color: colors.danger,
-                fontWeight: FontWeight.w600,
-                height: 1.4,
+          ],
+          if (hasScan && warnings.isNotEmpty) ...[
+            const SizedBox(height: 11),
+            Container(
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: colors.dangerBg,
+                border: Border.all(color: colors.dangerBorder),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final warning in warnings)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        warning,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: colors.danger,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 3),
+                  Text(
+                    "Double-check you photographed the right cheque — you can still continue if you're sure.",
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: colors.bodyText,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 11),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => notifier.recaptureChequePhoto(cheque.id),
+                      child: const Text('Retake photo'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (entry.micrCheck != ChequeMicrCheck.pending) ...[
+            const SizedBox(height: 11),
+            _MicrCheckCard(entry: entry, notifier: notifier),
+          ],
+          const SizedBox(height: 12),
+          _ChequeVoucherRow(entry: entry, hasSharedVoucher: hasSharedVoucher, notifier: notifier),
+          if (entry.submitError != null) ...[
+            const SizedBox(height: 11),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: colors.dangerBg,
+                border: Border.all(color: colors.dangerBorder),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${entry.submitError!} Remove this cheque to submit the rest.',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: colors.danger, height: 1.5),
               ),
             ),
           ],
         ],
-      );
-    }
-
-    return _ChequePhotoStep(draft: draft, notifier: notifier, cheque: cheque);
+      ),
+    );
   }
 }
 
-class _ChequePhotoStep extends StatelessWidget {
-  const _ChequePhotoStep({
-    required this.draft,
-    required this.notifier,
-    required this.cheque,
-  });
+/// Optional voucher for one cheque. Without one, the cheque gets the shared
+/// voucher from step 5 (if any) — the line beside the tile says which.
+class _ChequeVoucherRow extends StatelessWidget {
+  const _ChequeVoucherRow({required this.entry, required this.hasSharedVoucher, required this.notifier});
 
-  final CollectionDraft draft;
+  final CollectedCheque entry;
+  final bool hasSharedVoucher;
   final CollectDraftNotifier notifier;
-  final Cheque cheque;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final scanning = draft.isScanningChequeCopy;
-    final warnings = draft.chequeScanWarnings;
-    final hasScan = !scanning && draft.chequeScan != null;
+    final chequeId = entry.cheque.id;
+    final voucherPath = entry.voucherPath;
+    final note = voucherPath != null
+        ? 'Used for this cheque instead of the shared voucher.'
+        : hasSharedVoucher
+            ? 'Uses the shared voucher from step 5. Add one to use a different voucher for this cheque.'
+            : 'Add a voucher for this cheque, or one shared voucher in step 5.';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                cheque.bank,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: colors.textMuted,
-                  fontWeight: FontWeight.w600,
-                ),
+        voucherPath != null
+            ? _SupportingDocThumb(path: voucherPath, onRemove: () => notifier.removeChequeVoucher(chequeId))
+            : _AddSupportingDocTile(onTap: () => notifier.captureChequeVoucher(chequeId)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text(
+                    'Voucher',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'Optional',
+                    style: TextStyle(fontSize: 10.5, color: colors.textFaint, fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
-            ),
-            TextButton(
-              onPressed: notifier.clearCheque,
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-              ),
-              child: Text(
-                'Change cheque',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: colors.textMuted,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _ChequeInfoField(
-              label: 'CHEQUE NO.',
-              value: cheque.chequeNumber,
-              monospace: true,
-            ),
-            const SizedBox(width: 10),
-            _ChequeInfoField(
-              label: 'AMOUNT (AED)',
-              value: NumberFormat.currency(
-                locale: 'en_US',
-                symbol: '',
-                decimalDigits: 0,
-              ).format(cheque.amount).trim(),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        GestureDetector(
-          onTap: notifier.captureChequeCopy,
-          child: _DashedCaptureBox(
-            imagePath: draft.chequeCopyPath,
-            icon: Icons.receipt_long_outlined,
-            label: 'Capture or attach cheque copy',
-            filledLabel: 'CHEQUE COPY CAPTURED',
+              const SizedBox(height: 4),
+              Text(note, style: TextStyle(fontSize: 10.5, color: colors.textMuted, height: 1.4)),
+            ],
           ),
         ),
-        if (scanning) ...[
-          const SizedBox(height: 11),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
-            decoration: BoxDecoration(
-              color: colors.pendingBg,
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.accent,
-                  ),
-                ),
-                const SizedBox(width: 9),
-                Text(
-                  'Checking cheque photo…',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: colors.accent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+      ],
+    );
+  }
+}
+
+/// Result of checking the leaf's MICR band against the selected cheque's
+/// number. When the band confirms it, this is just a confirmation line;
+/// when it couldn't be read, or reads a different number, the agent must
+/// tick the manual-check box before step 4 counts as done.
+class _MicrCheckCard extends StatelessWidget {
+  const _MicrCheckCard({required this.entry, required this.notifier});
+
+  final CollectedCheque entry;
+  final CollectDraftNotifier notifier;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    final cheque = entry.cheque;
+    final check = entry.micrCheck;
+
+    if (check == ChequeMicrCheck.matched) {
+      return Row(
+        children: [
+          Icon(Icons.verified_outlined, size: 15, color: colors.success),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              'Cheque no. confirmed from the MICR line.',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: colors.success,
+              ),
             ),
           ),
         ],
-        if (hasScan && warnings.isEmpty) ...[
-          const SizedBox(height: 11),
-          Container(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: colors.matchedBg,
-              border: Border.all(color: colors.matchedBorder),
-              borderRadius: BorderRadius.circular(12),
+      );
+    }
+
+    final mismatched = check == ChequeMicrCheck.mismatched;
+    final accent = mismatched ? colors.danger : colors.warning;
+    final verified = entry.numberManuallyVerified;
+    final micr = entry.scan?.micrChequeNumber;
+
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: mismatched ? colors.dangerBg : colors.neutralTint,
+        border: Border.all(
+          color: mismatched ? colors.dangerBorder : colors.neutralTintBorder,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            mismatched
+                ? 'MICR line reads $micr — not ${cheque.chequeNumber}.'
+                : "Couldn't read the MICR line on this photo.",
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: accent,
             ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Check the number printed on the cheque matches '
+            '${cheque.chequeNumber}, or retake the photo with the bottom '
+            'strip of the cheque in focus.',
+            style: TextStyle(
+              fontSize: 11.5,
+              color: colors.bodyText,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 11),
+          GestureDetector(
+            onTap: () => notifier.toggleChequeNumberVerified(cheque.id),
+            behavior: HitTestBehavior.opaque,
             child: Row(
               children: [
-                Text(
-                  '✓',
-                  style: TextStyle(
-                    color: colors.success,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                Container(
+                  width: 21,
+                  height: 21,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    border: verified
+                        ? null
+                        : Border.all(color: colors.dashedBorder, width: 1.5),
+                    color: verified ? colors.success : colors.surface,
                   ),
+                  child: verified
+                      ? const Icon(Icons.check, size: 14, color: Colors.white)
+                      : null,
                 ),
-                const SizedBox(width: 7),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    "Photo matches the selected cheque's vendor.",
-                    style: TextStyle(
-                      fontSize: 11.5,
+                    "I've checked the cheque no. is ${cheque.chequeNumber}",
+                    style: const TextStyle(
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w700,
-                      color: colors.success,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-        ],
-        if (hasScan && warnings.isNotEmpty) ...[
           const SizedBox(height: 11),
-          Container(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: colors.dangerBg,
-              border: Border.all(color: colors.dangerBorder),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final warning in warnings)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      warning,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                        color: colors.danger,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 3),
-                Text(
-                  "Double-check you photographed the right cheque — you can still continue if you're sure.",
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: colors.bodyText,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 11),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: notifier.captureChequeCopy,
-                    child: const Text('Retake photo'),
-                  ),
-                ),
-              ],
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => notifier.recaptureChequePhoto(cheque.id),
+              child: const Text('Retake photo'),
             ),
           ),
         ],
-      ],
+      ),
     );
   }
 }
@@ -1382,7 +1613,9 @@ class _VoucherStep extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Optional — capture the payment voucher for the record.',
+          draft.cheques.length > 1
+              ? 'Optional — one voucher for every cheque. A cheque with its own voucher (added on its card) uses that instead.'
+              : 'Optional — capture the payment voucher for the record.',
           style: TextStyle(fontSize: 11, color: colors.textMuted, height: 1.45),
         ),
         const SizedBox(height: 12),
@@ -1592,9 +1825,9 @@ class _ConsentStep extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'I confirm I am the authorised representative of $vendorName collecting this cheque on its behalf, '
+          'I confirm I am the authorised representative of $vendorName collecting ${draft.cheques.length > 1 ? 'these cheques' : 'this cheque'} on its behalf, '
           'and I consent to my Emirates ID, photograph and contact details being stored for identity '
-          'verification and audit of this transaction.',
+          'verification and audit of ${draft.cheques.length > 1 ? 'these transactions' : 'this transaction'}.',
           style: TextStyle(fontSize: 11.5, color: colors.bodyText, height: 1.6),
         ),
         const SizedBox(height: 12),
@@ -1721,13 +1954,14 @@ class _SignatureStep extends StatelessWidget {
 }
 
 class _CollectionSuccessView extends ConsumerWidget {
-  const _CollectionSuccessView({required this.record});
+  const _CollectionSuccessView({required this.records});
 
-  final CollectionRecord record;
+  final List<CollectionRecord> records;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.semanticColors;
+    final amountFormat = NumberFormat.currency(locale: 'en_US', symbol: '', decimalDigits: 0);
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(22, 34, 22, 22),
@@ -1745,22 +1979,26 @@ class _CollectionSuccessView extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Collection recorded',
+              records.length == 1 ? 'Collection recorded' : '${records.length} cheques recorded',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontSize: 19),
             ),
             const SizedBox(height: 5),
             Text(
-              record.chequeNumber,
-              style: TextStyle(fontSize: 12, color: colors.textMuted),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              record.vendorName,
+              records.first.vendorName,
               style: TextStyle(fontSize: 12.5, color: colors.bodyText),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 10),
+            for (final record in records)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(
+                  '${record.chequeNumber} · AED ${amountFormat.format(record.amount).trim()}',
+                  style: TextStyle(fontSize: 12, color: colors.textMuted),
+                ),
+              ),
             const SizedBox(height: 20),
             Container(
               width: double.infinity,
@@ -1777,7 +2015,7 @@ class _CollectionSuccessView extends ConsumerWidget {
                   SizedBox(height: 11),
                   _ChecklistLine(
                     text:
-                        'Emirates ID, photo, cheque copy & signature attached',
+                        'Emirates ID, photo, cheque copies & signature attached',
                   ),
                   SizedBox(height: 11),
                   _ChecklistLine(

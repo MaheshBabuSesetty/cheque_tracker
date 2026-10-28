@@ -2,20 +2,16 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../services/version_check_service.dart';
-import '../di/dependency_injection.dart';
-
-/// The installed app's version/build (read from the platform, not
-/// hardcoded) plus whatever [VersionCheckService] says about a newer one.
+/// The installed app's version/build, read from the platform rather than
+/// hardcoded.
 class AppVersionInfo extends Equatable {
-  const AppVersionInfo({required this.version, required this.buildNumber, required this.updateStatus});
+  const AppVersionInfo({required this.version, required this.buildNumber});
 
   final String version;
   final String buildNumber;
-  final AppVersionStatus updateStatus;
 
   @override
-  List<Object?> get props => [version, buildNumber, updateStatus];
+  List<Object?> get props => [version, buildNumber];
 }
 
 /// Plain `FutureProvider` rather than a `@riverpod`-generated one — this is
@@ -23,8 +19,5 @@ class AppVersionInfo extends Equatable {
 /// generated boilerplate a full notifier needs would buy nothing here.
 final appVersionProvider = FutureProvider<AppVersionInfo>((ref) async {
   final packageInfo = await PackageInfo.fromPlatform();
-  final status = await ref
-      .read(versionCheckServiceProvider)
-      .checkForUpdate(currentVersion: packageInfo.version, currentBuildNumber: packageInfo.buildNumber);
-  return AppVersionInfo(version: packageInfo.version, buildNumber: packageInfo.buildNumber, updateStatus: status);
+  return AppVersionInfo(version: packageInfo.version, buildNumber: packageInfo.buildNumber);
 });

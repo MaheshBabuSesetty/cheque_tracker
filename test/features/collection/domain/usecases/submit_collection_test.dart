@@ -1,4 +1,5 @@
 import 'package:cheque_tracker/features/cheques/domain/entities/cheque.dart';
+import 'package:cheque_tracker/features/collection/domain/entities/collected_cheque.dart';
 import 'package:cheque_tracker/features/collection/domain/entities/collection_draft.dart';
 import 'package:cheque_tracker/features/collection/domain/entities/collection_record.dart';
 import 'package:cheque_tracker/features/collection/domain/entities/emirates_id_scan.dart';
@@ -39,12 +40,12 @@ void main() {
     vendor: () => vendor,
     repName: 'Rashid Kamal',
     repMobile: '501234567',
-    repPhotoPath: () => '/tmp/rep.jpg',
     idFrontPath: () => '/tmp/front.jpg',
     idBackPath: () => '/tmp/back.jpg',
     frontIdScan: () => scan,
-    cheque: () => cheque,
-    chequeCopyPath: () => '/tmp/cheque.jpg',
+    cheques: [
+      CollectedCheque(cheque: cheque, photoPath: '/tmp/cheque.jpg', numberManuallyVerified: true),
+    ],
     consent: true,
     signaturePath: () => '/tmp/signature.png',
   );
@@ -69,12 +70,12 @@ void main() {
     usecase = SubmitCollection(repository);
   });
 
-  test('delegates the completed draft to the repository and returns its record', () async {
-    when(() => repository.submit(completeDraft)).thenAnswer((_) async => serverRecord);
+  test('delegates the completed draft to the repository and returns its records', () async {
+    when(() => repository.submit(completeDraft)).thenAnswer((_) async => [serverRecord]);
 
-    final record = await usecase(completeDraft);
+    final records = await usecase(completeDraft);
 
-    expect(record, serverRecord);
+    expect(records, [serverRecord]);
     verify(() => repository.submit(completeDraft)).called(1);
   });
 

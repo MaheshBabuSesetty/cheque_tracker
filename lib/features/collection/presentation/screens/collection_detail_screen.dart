@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/network/authenticated_network_image.dart';
+import '../../../../core/routing/route_names.dart';
 import '../../../../core/theme/theme_extensions.dart';
 import '../../../../core/widgets/responsive_content.dart';
 import '../../domain/entities/collection_record.dart';
@@ -149,29 +150,10 @@ class _DetailBody extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 11),
-                  _DetailCard(
-                    children: [
-                      Text(
-                        'PROFILE',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: colors.textMuted,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                      const SizedBox(height: 11),
-                      SizedBox(
-                        height: 120,
-                        width: 120,
-                        child: _AttachmentTile(
-                          label: 'Rep photo',
-                          url: record.collectorPhotoUrl,
-                        ),
-                      ),
-                    ],
-                  ),
+                  if (record.batchCheques.isNotEmpty) ...[
+                    const SizedBox(height: 11),
+                    _BatchCard(record: record),
+                  ],
                   const SizedBox(height: 11),
                   _DetailCard(
                     children: [
@@ -348,6 +330,69 @@ class _StatusChip extends StatelessWidget {
           color: colors.success,
         ),
       ),
+    );
+  }
+}
+
+/// The other cheques handed over in the same visit — they share the
+/// representative, Emirates ID and signature, and differ only in the cheque
+/// photo. Tapping one opens its own collection.
+class _BatchCard extends StatelessWidget {
+  const _BatchCard({required this.record});
+
+  final CollectionRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    final count = record.batchCheques.length + 1;
+    return _DetailCard(
+      children: [
+        Text(
+          'COLLECTED TOGETHER · $count CHEQUES',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: colors.textMuted,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(height: 6),
+        for (final other in record.batchCheques)
+          InkWell(
+            onTap: () => Navigator.of(context).pushReplacementNamed(
+              RouteNames.collectionDetail,
+              arguments: other.chequeId,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      other.chequeNumber,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    NumberFormat.currency(
+                      locale: 'en_US',
+                      symbol: '${other.currency} ',
+                      decimalDigits: 0,
+                    ).format(other.amount),
+                    style: TextStyle(fontSize: 12, color: colors.bodyText),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(Icons.chevron_right, size: 18, color: colors.textFaint),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
