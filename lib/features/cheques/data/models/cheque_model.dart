@@ -46,7 +46,9 @@ class ChequeModel extends Cheque {
       serialNumber: json['serialNumber'] as int,
       vendorId: json['vendorId'] as String,
       supplierName: json['supplierName'] as String,
-      chequeType: json['chequeType'] as String,
+      // Left blank on some real cheques (the web shows "—"), and the API
+      // then sends null — one such cheque used to fail the whole list.
+      chequeType: json['chequeType'] as String? ?? '',
       paymentType: json['paymentType'] as String,
       bank: json['bank'] as String,
       chequeNumber: json['chequeNumber'] as String,

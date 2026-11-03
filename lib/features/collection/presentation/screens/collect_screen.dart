@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/error/exceptions.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_extensions.dart';
 import '../../../../core/utils/phone_country_codes.dart';
@@ -138,9 +139,15 @@ class _CollectFormState extends ConsumerState<_CollectForm> {
 
   Future<void> _handleSubmit() async {
     setState(() => _submitting = true);
-    final outcome = await ref.read(collectDraftProvider.notifier).submit();
+    // `submit` never throws by contract; the finally is the safety net
+    // that keeps "Submitting…" from sticking if that ever breaks.
+    final SubmitOutcome? outcome;
+    try {
+      outcome = await ref.read(collectDraftProvider.notifier).submit();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
     if (!mounted) return;
-    setState(() => _submitting = false);
     if (outcome == null) return;
     final records = outcome.records;
     if (records != null) {
@@ -831,7 +838,23 @@ class _ChequeStepState extends State<_ChequeStep> {
       _capturing = true;
       _error = null;
     });
-    final result = await widget.notifier.captureAndAddCheque(vendor: vendor, number: number);
+    final ChequeAddResult? result;
+    try {
+      result = await widget.notifier.captureAndAddCheque(vendor: vendor, number: number);
+    } catch (e) {
+      // Without this the button stays on "Capturing…" for good: the
+      // cheque lookup runs before the camera opens, and a failed one
+      // (offline, timeout, 5xx) would otherwise escape unreported.
+      debugPrint('Cheque capture failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _capturing = false;
+        _error = e is NetworkException
+            ? "Couldn't load this vendor's cheques — check your connection and try again."
+            : "Couldn't load this vendor's cheques. Please try again.";
+      });
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _capturing = false;
@@ -1871,7 +1894,16 @@ class _SignatureStep extends StatelessWidget {
 
   Future<void> _sign(BuildContext context) async {
     final bytes = await SignatureSheet.show(context);
-    if (bytes != null) await notifier.setSignature(bytes);
+    if (bytes == null) return;
+    try {
+      await notifier.setSignature(bytes);
+    } catch (e) {
+      debugPrint('Saving signature failed: $e');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text("Couldn't save the signature. Please sign again.")));
+    }
   }
 
   @override

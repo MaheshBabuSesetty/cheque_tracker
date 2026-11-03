@@ -12,6 +12,7 @@ import '../../domain/entities/cheque_scan.dart';
 import '../../domain/entities/collected_cheque.dart';
 import '../../domain/entities/collection_draft.dart';
 import '../../domain/entities/collection_record.dart';
+import '../../domain/entities/emirates_id_scan.dart';
 import '../../domain/entities/vendor.dart';
 import 'collection_providers.dart';
 import 'collections_notifier.dart';
@@ -113,7 +114,7 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     if (path == null) return;
     _forgetFile(state.idFrontPath);
     state = state.copyWith(idFrontPath: () => path, frontIdScan: () => null, isScanningId: true);
-    final scan = await ref.read(scanEmiratesIdProvider)(path);
+    final scan = await _scanId(path);
     state = state.copyWith(isScanningId: false, frontIdScan: () => scan);
     _autoFillRepName();
   }
@@ -123,9 +124,21 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     if (path == null) return;
     _forgetFile(state.idBackPath);
     state = state.copyWith(idBackPath: () => path, backIdScan: () => null, isScanningId: true);
-    final scan = await ref.read(scanEmiratesIdProvider)(path);
+    final scan = await _scanId(path);
     state = state.copyWith(isScanningId: false, backIdScan: () => scan);
     _autoFillRepName();
+  }
+
+  /// Like [_scanChequeCopy]: a scan that throws reads as "nothing found"
+  /// rather than leaving [CollectionDraft.isScanningId] stuck at `true`,
+  /// which would block step 2 for good.
+  Future<EmiratesIdScan> _scanId(String path) async {
+    try {
+      return await ref.read(scanEmiratesIdProvider)(path);
+    } catch (e) {
+      debugPrint('Emirates ID scan failed, treating as unscanned: $e');
+      return const EmiratesIdScan(idNumber: '', name: '', confidence: '0%');
+    }
   }
 
   Future<void> rescanId() async {
@@ -133,8 +146,8 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
     final backPath = state.idBackPath;
     if (frontPath == null && backPath == null) return;
     state = state.copyWith(isScanningId: true);
-    final frontScan = frontPath != null ? await ref.read(scanEmiratesIdProvider)(frontPath) : null;
-    final backScan = backPath != null ? await ref.read(scanEmiratesIdProvider)(backPath) : null;
+    final frontScan = frontPath != null ? await _scanId(frontPath) : null;
+    final backScan = backPath != null ? await _scanId(backPath) : null;
     state = state.copyWith(
       isScanningId: false,
       frontIdScan: frontPath != null ? () => frontScan : null,
@@ -186,7 +199,12 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
   /// Looks for one of [vendor]'s SIGNED cheques whose number matches
   /// [number], without touching draft state.
   Future<Cheque?> _findSignedCheque({required Vendor vendor, required String number}) async {
-    final cheques = await ref.read(signedChequesForVendorProvider(vendor).future);
+    // The use case directly, not `signedChequesForVendorProvider`: that
+    // provider is autoDispose with no other listener, so a failed fetch
+    // either disposes it mid-load (a `StateError` in place of the real
+    // error) or, kept alive, sits in Riverpod's automatic retry and never
+    // completes — both left the capture button spinning for good.
+    final cheques = await ref.read(getSignedChequesForVendorProvider)(vendor);
     for (final candidate in cheques) {
       if (candidate.chequeNumber.trim().toUpperCase() == number.toUpperCase()) {
         return candidate;
@@ -385,6 +403,12 @@ class CollectDraftNotifier extends _$CollectDraftNotifier {
       return SubmitOutcome.failed(e.message);
     } on ServerException catch (e) {
       return _reconcile(draft, e.message);
+    } catch (e) {
+      // Anything else (a capture file gone from disk, a malformed
+      // response, ...) — the request may never have left, or may have
+      // succeeded, so check rather than guess.
+      debugPrint('Collection submit failed unexpectedly: $e');
+      return _reconcile(draft, "Couldn't submit this collection. Please try again.");
     }
   }
 
